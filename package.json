@@ -22,7 +22,10 @@
     "icon": "node scripts/make-icon.mjs && tauri icon src-tauri/icon-source.png"
   },
   "dependencies": {
+    "@lucide/vue": "^1.61.0",
     "@tauri-apps/api": "^2.9.0",
+    "class-variance-authority": "^0.7.1",
+    "reka-ui": "^2.11.0",
     "vue": "^3.5.44"
   },
   "devDependencies": {

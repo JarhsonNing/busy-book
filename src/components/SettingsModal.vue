@@ -36,7 +36,7 @@ function submit() {
           <h2>设置</h2>
           <p>定价策略、发布文案和窗口地址</p>
         </div>
-        <button class="icon-btn" @click="$emit('close')">×</button>
+        <UiButton class="icon-btn" @click="$emit('close')">×</UiButton>
       </header>
 
       <div class="modal-body">
@@ -93,8 +93,8 @@ function submit() {
       </div>
 
       <footer class="modal-foot">
-        <button class="btn ghost" @click="$emit('close')">取消</button>
-        <button class="btn accent" @click="submit">保存设置</button>
+        <UiButton class="btn ghost" @click="$emit('close')">取消</UiButton>
+        <UiButton class="btn accent" @click="submit">保存设置</UiButton>
       </footer>
     </div>
   </div>

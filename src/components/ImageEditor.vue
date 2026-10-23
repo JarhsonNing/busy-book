@@ -487,7 +487,7 @@ watch(showMask, draw);
           <h2>图片净化</h2>
           <p>涂抹水印文字 → 修补 → 裁剪导出，发布时自动使用处理后的图</p>
         </div>
-        <button class="icon-btn" @click="$emit('close')">×</button>
+        <UiButton class="icon-btn" @click="$emit('close')">×</UiButton>
       </header>
 
       <div class="editor-body">
@@ -501,10 +501,10 @@ watch(showMask, draw);
             @pointercancel="pointerUp"
           />
           <div class="canvas-tools">
-            <button :class="['tool-btn', { active: tool === 'brush' }]" @click="tool = 'brush'">画笔</button>
-            <button :class="['tool-btn', { active: tool === 'erase' }]" @click="tool = 'erase'">橡皮</button>
-            <button class="tool-btn" :disabled="!history.length" @click="undo">撤销</button>
-            <button class="tool-btn" @click="resetAll">重置</button>
+            <UiButton :class="['tool-btn', { active: tool === 'brush' }]" @click="tool = 'brush'">画笔</UiButton>
+            <UiButton :class="['tool-btn', { active: tool === 'erase' }]" @click="tool = 'erase'">橡皮</UiButton>
+            <UiButton class="tool-btn" :disabled="!history.length" @click="undo">撤销</UiButton>
+            <UiButton class="tool-btn" @click="resetAll">重置</UiButton>
             <label class="brush-size">
               笔刷
               <input v-model.number="brushSize" type="range" min="8" max="140" />
@@ -528,7 +528,7 @@ watch(showMask, draw);
               <span>识别强度 {{ threshold }}</span>
               <input v-model.number="threshold" type="range" min="6" max="40" />
             </label>
-            <button class="btn small" :disabled="loading || busy" @click="detect">识别并标记</button>
+            <UiButton class="btn small" :disabled="loading || busy" @click="detect">识别并标记</UiButton>
             <p class="hint">识别半透明浅色文字，跑完可再用画笔补涂或橡皮擦掉误标。</p>
           </section>
 
@@ -563,9 +563,9 @@ watch(showMask, draw);
           </section>
 
           <p class="status-line">{{ status }}</p>
-          <button class="btn accent block" :disabled="busy || loading" @click="save">
+          <UiButton class="btn accent block" :disabled="busy || loading" @click="save">
             {{ busy ? '处理中…' : '保存处理结果' }}
-          </button>
+          </UiButton>
           <p class="hint tiny-note">
             仅处理自己拥有使用权的图片。使用第三方平台图片前请确认授权。
           </p>

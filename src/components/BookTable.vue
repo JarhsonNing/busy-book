@@ -75,19 +75,19 @@ function money(value) {
             </p>
           </td>
           <td class="col-actions" @click.stop>
-            <button class="btn tiny ghost" @click="$emit('find', book)">找图</button>
-            <button
+            <UiButton class="btn tiny ghost" @click="$emit('find', book)">找图</UiButton>
+            <UiButton
               class="btn tiny"
               :disabled="!book.imageCount"
               :title="book.imageCount ? '一键发布到闲鱼' : '先找图'"
               @click="$emit('publish', book)"
             >
               网页发布
-            </button>
-            <button class="btn tiny ghost" @click="$emit('api-publish', book)">接口发布</button>
-            <button class="icon-btn tiny danger" title="删除" @click="$emit('delete', book)">
+            </UiButton>
+            <UiButton class="btn tiny ghost" @click="$emit('api-publish', book)">接口发布</UiButton>
+            <UiButton class="icon-btn tiny danger" title="删除" @click="$emit('delete', book)">
               ×
-            </button>
+            </UiButton>
           </td>
         </tr>
       </tbody>

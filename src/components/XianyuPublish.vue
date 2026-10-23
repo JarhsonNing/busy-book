@@ -294,9 +294,9 @@ onMounted(async () => {
           <span class="xy-eyebrow">本地图书 → 闲鱼</span>
           <h2 id="xy-publish-title">接口发布</h2>
         </div>
-        <button class="icon-btn" :disabled="busy" aria-label="关闭" @click="emit('close')">
+        <UiButton class="icon-btn" :disabled="busy" aria-label="关闭" @click="emit('close')">
           ×
-        </button>
+        </UiButton>
       </header>
       <form @submit.prevent="submit">
         <div class="xy-dialog-body">
@@ -306,10 +306,10 @@ onMounted(async () => {
           </p>
           <label class="field"
             ><span>售卖形态</span
-            ><select v-model="form.saleMode" class="input">
+            ><SearchSelect v-model="form.saleMode" class="input">
               <option value="physical">实体单规格（兼容现有流程）</option>
               <option value="mixed">电子＋实体双规格（待验证）</option>
-            </select></label
+            </SearchSelect></label
           >
           <p v-if="form.saleMode === 'mixed'" class="xy-notice">
             双规格托管与关机发货尚待验证，请到图书经营的「销售商品」准备草稿。
@@ -319,16 +319,16 @@ onMounted(async () => {
           <fieldset :disabled="busy || loading" class="xy-fieldset form-grid two">
             <label class="field"
               ><span>本地图书</span
-              ><select v-model="selectedId" required class="input">
+              ><SearchSelect v-model="selectedId" required class="input">
                 <option value="">选择图书</option>
                 <option v-for="book in books" :key="book.id" :value="book.id">
                   #{{ book.id }} {{ book.title }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <label class="field"
               ><span>发布店铺</span
-              ><select v-model="form.userName" required class="input">
+              ><SearchSelect v-model="form.userName" required class="input">
                 <option value="">选择有效店铺</option>
                 <option
                   v-for="shop in availableShops"
@@ -337,11 +337,11 @@ onMounted(async () => {
                 >
                   {{ shop.shop_name || shop.user_nick }} · {{ shop.user_name }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <label class="field"
               ><span>图书类目</span
-              ><select
+              ><SearchSelect
                 v-model="form.channelCatId"
                 class="input"
                 required
@@ -355,11 +355,11 @@ onMounted(async () => {
                 >
                   {{ cat.channel_cat_name }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <label class="field"
               ><span>成色</span
-              ><select v-model="form.stuffStatus" class="input">
+              ><SearchSelect v-model="form.stuffStatus" class="input">
                 <option
                   v-for="[value, label] in [
                     [100, '全新'],
@@ -377,11 +377,11 @@ onMounted(async () => {
                 >
                   {{ label }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <label v-for="node in nodes" :key="node.property_id" class="field"
               ><span>{{ node.property_name }}{{ node.required ? ' *' : '' }}</span
-              ><select
+              ><SearchSelect
                 v-model="choices[node.property_id]"
                 class="input"
                 :required="!!node.required"
@@ -392,12 +392,12 @@ onMounted(async () => {
                 <option v-for="item in node.items" :key="item.value_id" :value="item.value_id">
                   {{ item.value_name }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <p v-if="propertiesLoading" class="hint span-2">正在加载类目属性…</p>
             <label v-if="addresses.length" class="field span-2"
               ><span>使用商家地址的地区</span
-              ><select v-model="addressIndex" class="input">
+              ><SearchSelect v-model="addressIndex" class="input">
                 <option value="">手动选择省市区</option>
                 <option
                   v-for="(address, i) in addresses"
@@ -406,7 +406,7 @@ onMounted(async () => {
                 >
                   {{ address.region }} {{ address.address }}{{ address.is_def ? '（默认）' : '' }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <RegionSelect :model-value="form" class="span-2" @update:model-value="chooseRegion" />
             <p class="hint span-2">
@@ -456,11 +456,11 @@ onMounted(async () => {
             /></label>
             <label class="field"
               ><span>图片方式</span
-              ><select v-model="form.imageMode" class="input">
+              ><SearchSelect v-model="form.imageMode" class="input">
                 <option v-for="(label, value) in imageModes" :key="value" :value="value">
                   {{ label }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <label class="field span-2"
               ><span
@@ -499,20 +499,20 @@ onMounted(async () => {
           </fieldset>
         </div>
         <footer class="xy-dialog-foot">
-          <button type="button" class="btn ghost" :disabled="busy" @click="openBrowser('goofish')">
+          <UiButton type="button" class="btn ghost" :disabled="busy" @click="openBrowser('goofish')">
             打开闲鱼网页
-          </button>
+          </UiButton>
           <div class="spacer"></div>
-          <button type="button" class="btn ghost" :disabled="busy" @click="emit('close')">
-            取消</button
-          ><button
+          <UiButton type="button" class="btn ghost" :disabled="busy" @click="emit('close')">
+            取消</UiButton
+          ><UiButton
             class="btn accent"
             :disabled="
               busy || loading || propertiesLoading || !validProperties || form.saleMode === 'mixed'
             "
           >
             {{ busy ? '提交中，请稍候…' : form.createOnly ? '创建并测试图片' : '创建并上架' }}
-          </button>
+          </UiButton>
         </footer>
       </form>
     </section>

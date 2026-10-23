@@ -229,8 +229,8 @@ function money(value) {
         </p>
       </div>
       <div class="drawer-head-actions">
-        <button class="icon-btn" title="刷新" @click="$emit('refresh')">↻</button>
-        <button class="icon-btn" title="关闭" @click="$emit('close')">×</button>
+        <UiButton class="icon-btn" title="刷新" @click="$emit('refresh')">↻</UiButton>
+        <UiButton class="icon-btn" title="关闭" @click="$emit('close')">×</UiButton>
       </div>
     </header>
 
@@ -260,9 +260,9 @@ function money(value) {
           </label>
           <label class="field">
             <span>品相</span>
-            <select v-model="form.condition" class="input">
+            <SearchSelect v-model="form.condition" class="input">
               <option v-for="item in conditions" :key="item" :value="item">{{ item }}</option>
-            </select>
+            </SearchSelect>
           </label>
           <label class="field">
             <span>历史本地库存</span>
@@ -300,7 +300,7 @@ function money(value) {
       <section v-if="capture" class="block capture-block">
         <div class="block-head">
           <h3>淘宝采集</h3>
-          <button class="link-btn" @click="$emit('open-taobao')">打开原页 ↗</button>
+          <UiButton class="link-btn" @click="$emit('open-taobao')">打开原页 ↗</UiButton>
         </div>
         <div class="capture-grid">
           <div>
@@ -325,9 +325,9 @@ function money(value) {
             图片 <small>{{ images.length }} 张</small>
           </h3>
           <div class="block-actions">
-            <button class="btn tiny ghost" @click="$emit('find')">孔夫子找图</button>
-            <button class="btn tiny ghost" @click="fileInput?.click()">上传</button>
-            <button class="btn tiny ghost" @click="urlPanel = !urlPanel">链接导入</button>
+            <UiButton class="btn tiny ghost" @click="$emit('find')">孔夫子找图</UiButton>
+            <UiButton class="btn tiny ghost" @click="fileInput?.click()">上传</UiButton>
+            <UiButton class="btn tiny ghost" @click="urlPanel = !urlPanel">链接导入</UiButton>
           </div>
         </div>
 
@@ -342,7 +342,7 @@ function money(value) {
           />
           <div class="url-import-actions">
             <span>下载后可在图片上点「净化」处理水印和瑕疵</span>
-            <button class="btn tiny" @click="submitUrls">导入</button>
+            <UiButton class="btn tiny" @click="submitUrls">导入</UiButton>
           </div>
         </div>
 
@@ -365,22 +365,22 @@ function money(value) {
             <span v-if="image.isPrimary" class="thumb-badge">主图</span>
             <span v-if="image.processed" class="thumb-badge processed">已净化</span>
             <div class="thumb-actions">
-              <button @click="$emit('edit', image)">净化</button>
-              <button v-if="!image.isPrimary" @click="$emit('primary', image)">主图</button>
-              <button class="danger" @click="$emit('delete-image', image)">删除</button>
+              <UiButton @click="$emit('edit', image)">净化</UiButton>
+              <UiButton v-if="!image.isPrimary" @click="$emit('primary', image)">主图</UiButton>
+              <UiButton class="danger" @click="$emit('delete-image', image)">删除</UiButton>
             </div>
           </div>
-          <button class="thumb add" @click="fileInput?.click()">
+          <UiButton class="thumb add" @click="fileInput?.click()">
             <span>＋</span>
             <small>上传图片</small>
-          </button>
+          </UiButton>
         </div>
       </section>
 
       <section class="block">
         <div class="block-head">
           <h3>关联闲鱼订单</h3>
-          <button class="link-btn" @click="loadLinkedOrders()">刷新记录</button>
+          <UiButton class="link-btn" @click="loadLinkedOrders()">刷新记录</UiButton>
         </div>
         <p v-if="ordersLoading" class="hint">正在载入关联订单…</p>
         <p v-else-if="ordersError" class="xy-error" role="alert">{{ ordersError }}</p>
@@ -388,9 +388,9 @@ function money(value) {
           暂无已同步的关联订单。先在闲鱼工作台查询订单，匹配成功或手动关联后会显示在这里。
         </p>
         <div v-for="order in linkedOrders" :key="order.order_no" class="block">
-          <button class="link-btn mono" @click="$emit('open-order', order.order_no)">
+          <UiButton class="link-btn mono" @click="$emit('open-order', order.order_no)">
             {{ order.order_no }} · 查看实时详情
-          </button>
+          </UiButton>
           <p>
             {{ orderStates[order.order_status] || order.order_status }} · 数量
             {{ order.goods?.quantity ?? '—' }} · 实付 {{ yuan(order.pay_amount) }}
@@ -404,7 +404,7 @@ function money(value) {
       <section class="block">
         <div class="block-head">
           <h3>发布内容</h3>
-          <button class="link-btn" @click="generate()">重新生成文案</button>
+          <UiButton class="link-btn" @click="generate()">重新生成文案</UiButton>
         </div>
 
         <div v-if="latestListing" class="listing-state">
@@ -452,15 +452,15 @@ function money(value) {
     </div>
 
     <footer class="drawer-foot">
-      <button class="btn ghost" @click="$emit('find')">找图</button>
+      <UiButton class="btn ghost" @click="$emit('find')">找图</UiButton>
       <div class="spacer"></div>
-      <button class="btn" :disabled="!dirty" @click="save">保存修改</button>
-      <button class="btn accent" :disabled="publishing || !images.length" @click="publish()">
+      <UiButton class="btn" :disabled="!dirty" @click="save">保存修改</UiButton>
+      <UiButton class="btn accent" :disabled="publishing || !images.length" @click="publish()">
         {{ publishing ? '处理中…' : '网页发布' }}
-      </button>
-      <button class="btn ghost" :disabled="publishing" @click="publish('api-publish')">
+      </UiButton>
+      <UiButton class="btn ghost" :disabled="publishing" @click="publish('api-publish')">
         接口发布
-      </button>
+      </UiButton>
     </footer>
   </aside>
 </template>

@@ -217,10 +217,10 @@ async function saveMap() {
   <section class="block business-book">
     <div class="block-head">
       <h3>图书经营</h3>
-      <button class="link-btn" :disabled="busy" @click="load">刷新经营资料</button>
+      <UiButton class="link-btn" :disabled="busy" @click="load">刷新经营资料</UiButton>
     </div>
     <div class="business-tabs">
-      <button
+      <UiButton
         v-for="(name, key) in {
           profile: '版本确认',
           schools: '适用学校',
@@ -238,7 +238,7 @@ async function saveMap() {
         "
       >
         {{ name }}
-      </button>
+      </UiButton>
     </div>
     <p v-if="error" role="alert" class="xy-error">{{ error }}</p>
     <p v-if="message" role="status" class="hint">{{ message }}</p>
@@ -260,7 +260,7 @@ async function saveMap() {
         /></label>
         <label class="xy-check"
           ><input type="checkbox" v-model="profile.confirmed" />已核对书目身份、版次和册次</label
-        ><button class="btn" :disabled="busy">保存确认</button>
+        ><UiButton class="btn" :disabled="busy">保存确认</UiButton>
       </form>
       <div v-if="tab === 'schools'">
         <p v-if="!data.schoolRecords.length" class="hint">
@@ -290,13 +290,13 @@ async function saveMap() {
               ((f.snapshot.pay_amount || 0) / 100).toFixed(2)
             }}
           </p>
-          <button class="btn tiny" @click="emit('open-fulfillment', f.id)">
+          <UiButton class="btn tiny" @click="emit('open-fulfillment', f.id)">
             采购 / 交付 / 售后 / 核算详情
-          </button>
+          </UiButton>
         </article>
       </div>
       <div v-if="tab === 'sources'">
-        <button
+        <UiButton
           class="btn ghost"
           @click="
             openBrowser(
@@ -306,7 +306,7 @@ async function saveMap() {
           "
         >
           搜索本书实体货源
-        </button>
+        </UiButton>
         <p class="hint">一本书可有多个淘宝货源。采购价与货源可供量不等于本地库存。</p>
         <article v-for="s in data.sources" :key="s.id" class="business-card">
           <strong>{{ s.primary ? '主选 · ' : '' }}{{ s.data.shop || s.data.title }}</strong>
@@ -323,8 +323,8 @@ async function saveMap() {
           </p>
           <p class="hint">{{ showTime(s.data.checkedAt) }}</p>
           <div class="head-actions">
-            <button class="link-btn" @click="editSource(s)">编辑</button
-            ><button class="link-btn" @click="openBrowser('taobao', s.data.url)">打开货源</button>
+            <UiButton class="link-btn" @click="editSource(s)">编辑</UiButton
+            ><UiButton class="link-btn" @click="openBrowser('taobao', s.data.url)">打开货源</UiButton>
           </div>
         </article>
         <form @submit.prevent="saveSource" class="business-form">
@@ -376,20 +376,20 @@ async function saveMap() {
           >
           <label class="field"
             ><span>货源状态</span
-            ><select v-model="source.data.status" class="input">
+            ><SearchSelect v-model="source.data.status" class="input">
               <option value="pending">待核验</option>
               <option value="available">可用</option>
               <option value="unavailable">不可用</option>
-            </select></label
+            </SearchSelect></label
           >
           <div class="head-actions">
-            <button
+            <UiButton
               type="button"
               class="btn ghost"
               @click="source.data.checkedAt = new Date().toISOString()"
             >
-              标记本次已核验</button
-            ><button class="btn" :disabled="busy">保存货源</button>
+              标记本次已核验</UiButton
+            ><UiButton class="btn" :disabled="busy">保存货源</UiButton>
           </div>
         </form>
       </div>
@@ -409,13 +409,13 @@ async function saveMap() {
           <p>{{ r.data.instructions }}</p>
           <p class="hint">托管配置：{{ r.data.hostingRef || '尚未配置' }}（离线自动交付待验证）</p>
           <div class="head-actions">
-            <button class="btn tiny" :disabled="busy" @click="setResource(r, 'ready')">
-              核验可用</button
-            ><button class="btn tiny ghost" :disabled="busy" @click="setResource(r, 'invalid')">
-              标记失效</button
-            ><button class="btn tiny ghost" :disabled="busy" @click="setResource(r, 'retired')">
+            <UiButton class="btn tiny" :disabled="busy" @click="setResource(r, 'ready')">
+              核验可用</UiButton
+            ><UiButton class="btn tiny ghost" :disabled="busy" @click="setResource(r, 'invalid')">
+              标记失效</UiButton
+            ><UiButton class="btn tiny ghost" :disabled="busy" @click="setResource(r, 'retired')">
               停用
-            </button>
+            </UiButton>
           </div>
         </article>
         <form @submit.prevent="addResource" class="business-form">
@@ -443,7 +443,7 @@ async function saveMap() {
               required
               rows="3"
             /></label
-          ><button class="btn" :disabled="busy">入库新版本</button>
+          ><UiButton class="btn" :disabled="busy">入库新版本</UiButton>
         </form>
       </div>
       <div v-if="tab === 'channels'">
@@ -453,26 +453,26 @@ async function saveMap() {
             {{ c.data.mode === 'mixed' ? '电子＋实体双规格' : '实体单规格' }}</strong
           >
           <p class="mono">{{ c.productId || '本地草稿，尚未发布' }}</p>
-          <button class="btn tiny" :disabled="busy" @click="inspectChannel(c)">
+          <UiButton class="btn tiny" :disabled="busy" @click="inspectChannel(c)">
             查看 / 校验 / 实时库存
-          </button>
+          </UiButton>
         </article>
         <form @submit.prevent="saveChannel" class="business-form">
           <h4>准备销售草稿</h4>
           <label class="field"
             ><span>闲鱼店铺</span
-            ><select v-model="channel.shop" class="input" required>
+            ><SearchSelect v-model="channel.shop" class="input" required>
               <option value="">选择店铺</option>
               <option v-for="s in shops" :key="s.user_name" :value="s.user_name">
                 {{ s.shop_name || s.user_name }}
               </option>
-            </select></label
+            </SearchSelect></label
           ><label class="field"
             ><span>商品形态</span
-            ><select v-model="channel.data.mode" class="input">
+            ><SearchSelect v-model="channel.data.mode" class="input">
               <option value="mixed">同商品：电子版＋实体版</option>
               <option value="physical">现有实体单规格商品</option>
-            </select></label
+            </SearchSelect></label
           ><label class="field"
             ><span>商品标题</span
             ><input v-model="channel.data.title" class="input" required /></label
@@ -517,13 +517,13 @@ async function saveMap() {
           </div>
           <label class="field"
             ><span>电子资源版本</span
-            ><select v-model="channel.data.resourceId" class="input">
+            ><SearchSelect v-model="channel.data.resourceId" class="input">
               <option :value="null">未选择</option>
               <option v-for="r in data.resources" :key="r.id" :value="r.id">
                 {{ r.version }} · {{ r.state }}
               </option>
-            </select></label
-          ><button class="btn" :disabled="busy">保存草稿并校验</button>
+            </SearchSelect></label
+          ><UiButton class="btn" :disabled="busy">保存草稿并校验</UiButton>
         </form>
         <div v-if="check" class="business-card">
           <strong>{{ check.ready ? '资料校验通过' : '发布阻塞项' }}</strong>
@@ -537,9 +537,9 @@ async function saveMap() {
           <label class="field"
             ><span>管家商品 ID</span
             ><input v-model="mapping.productId" class="input mono" required /></label
-          ><button type="button" class="btn ghost" :disabled="busy" @click="inspectRemote">
+          ><UiButton type="button" class="btn ghost" :disabled="busy" @click="inspectRemote">
             读取商品及规格
-          </button>
+          </UiButton>
           <template v-if="remote"
             ><p>商品总库存：{{ remote.stock ?? '未知' }} · {{ showTime(remote.checkedAt) }}</p>
             <p v-if="remote.skuError" class="xy-error">{{ remote.skuError }}</p>
@@ -558,7 +558,7 @@ async function saveMap() {
                 type="checkbox"
                 required
               />已核对规格文字和售卖形态</label
-            ><button class="btn" :disabled="busy">保存规格关联</button></template
+            ><UiButton class="btn" :disabled="busy">保存规格关联</UiButton></template
           >
         </form>
       </div>

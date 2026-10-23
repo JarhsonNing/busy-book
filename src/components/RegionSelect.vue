@@ -12,7 +12,7 @@ const districts = computed(() => districtsFor(props.modelValue.province, props.m
   <div class="xy-region">
     <label class="field">
       <span>省份</span>
-      <select
+      <SearchSelect
         :value="modelValue.province"
         class="input"
         required
@@ -22,11 +22,11 @@ const districts = computed(() => districtsFor(props.modelValue.province, props.m
         <option v-for="province in provinces" :key="province.id" :value="province.id">
           {{ province.name }}
         </option>
-      </select>
+      </SearchSelect>
     </label>
     <label class="field">
       <span>城市</span>
-      <select
+      <SearchSelect
         :value="modelValue.city"
         class="input"
         required
@@ -35,11 +35,11 @@ const districts = computed(() => districtsFor(props.modelValue.province, props.m
       >
         <option value="">请选择城市</option>
         <option v-for="city in cities" :key="city.id" :value="city.id">{{ city.name }}</option>
-      </select>
+      </SearchSelect>
     </label>
     <label class="field">
       <span>区县</span>
-      <select
+      <SearchSelect
         :value="modelValue.district"
         class="input"
         required
@@ -56,7 +56,7 @@ const districts = computed(() => districtsFor(props.modelValue.province, props.m
         <option v-for="district in districts" :key="district.id" :value="district.id">
           {{ district.name }}
         </option>
-      </select>
+      </SearchSelect>
     </label>
   </div>
 </template>

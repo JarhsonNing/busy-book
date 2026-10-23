@@ -414,13 +414,13 @@ onBeforeUnmount(() => clearInterval(timer));
         <span :class="['xy-connection', { connected }]">{{
           connected ? '已连接' : configured ? '已配置' : '待配置'
         }}</span
-        ><button class="btn accent" :disabled="!configured || busy" @click="emit('publish')">
+        ><UiButton class="btn accent" :disabled="!configured || busy" @click="emit('publish')">
           发布本地图书
-        </button>
+        </UiButton>
       </div>
     </header>
     <nav class="xy-tabs" aria-label="闲鱼工作台功能">
-      <button
+      <UiButton
         v-for="(label, value) in tabs"
         :key="value"
         :class="{ active: tab === value }"
@@ -428,10 +428,10 @@ onBeforeUnmount(() => clearInterval(timer));
         @click="changeTab(value)"
       >
         {{ label }}<small v-if="value === 'tasks' && tasks.length">{{ tasks.length }}</small>
-      </button>
+      </UiButton>
     </nav>
     <p v-if="error" class="xy-error" role="alert">
-      {{ error }} <button class="link-btn" :disabled="busy" @click="refresh">重试</button>
+      {{ error }} <UiButton class="link-btn" :disabled="busy" @click="refresh">重试</UiButton>
     </p>
     <section v-if="tab === 'config'" class="panel xy-config">
       <h3>应用接入</h3>
@@ -456,15 +456,15 @@ onBeforeUnmount(() => clearInterval(timer));
             :disabled="busy"
         /></label>
         <div class="head-actions">
-          <button class="btn" :disabled="busy">保存配置</button
-          ><button
+          <UiButton class="btn" :disabled="busy">保存配置</UiButton
+          ><UiButton
             type="button"
             class="btn ghost"
             :disabled="busy || !configured"
             @click="testConnection"
           >
             测试已保存的配置
-          </button>
+          </UiButton>
         </div>
       </form>
       <hr class="xy-config-divider" />
@@ -503,15 +503,15 @@ onBeforeUnmount(() => clearInterval(timer));
           /></label>
         </div>
         <div class="head-actions">
-          <button class="btn" :disabled="busy">保存图片托管配置</button
-          ><button
+          <UiButton class="btn" :disabled="busy">保存图片托管配置</UiButton
+          ><UiButton
             type="button"
             class="btn ghost"
             :disabled="busy || !hostingConfigured"
             @click="testHosting"
           >
             测试已保存的仓库
-          </button>
+          </UiButton>
         </div>
       </form>
       <p v-if="hostingResult" class="xy-notice">{{ hostingResult }}</p>
@@ -525,7 +525,7 @@ onBeforeUnmount(() => clearInterval(timer));
     <template v-else-if="configured">
       <div class="xy-toolbar">
         <template v-if="['products', 'orders'].includes(tab)"
-          ><select
+          ><SearchSelect
             v-model="status"
             class="input select"
             aria-label="状态"
@@ -539,8 +539,8 @@ onBeforeUnmount(() => clearInterval(timer));
               :value="value"
             >
               {{ label }}
-            </option></select
-          ><select
+            </option></SearchSelect
+          ><SearchSelect
             v-if="tab === 'orders'"
             v-model="shopFilter"
             class="input select"
@@ -551,8 +551,8 @@ onBeforeUnmount(() => clearInterval(timer));
             <option value="">全部店铺</option>
             <option v-for="shop in shops" :key="shop.authorize_id" :value="shop.authorize_id">
               {{ shop.shop_name || shop.user_nick }}
-            </option></select
-          ><select
+            </option></SearchSelect
+          ><SearchSelect
             v-model="days"
             class="input select"
             aria-label="最近修改时间"
@@ -562,7 +562,7 @@ onBeforeUnmount(() => clearInterval(timer));
             <option :value="7">近 7 天修改</option>
             <option :value="30">近 30 天修改</option>
             <option :value="90">近 90 天修改</option>
-            <option :value="180">近 180 天修改</option></select
+            <option :value="180">近 180 天修改</option></SearchSelect
           ><input
             v-model="keyword"
             class="input xy-page-search"
@@ -575,14 +575,14 @@ onBeforeUnmount(() => clearInterval(timer));
               class="input mono"
               :placeholder="tab === 'products' ? '闲管家商品 ID' : '闲鱼订单号'"
               :aria-label="tab === 'products' ? '闲管家商品 ID' : '闲鱼订单号'"
-            /><button class="btn ghost small" :disabled="busy">查询详情</button>
+            /><UiButton class="btn ghost small" :disabled="busy">查询详情</UiButton>
           </form></template
         >
         <div class="spacer"></div>
         <span v-if="lastUpdated" class="hint">{{ lastUpdated }} 更新</span
-        ><button class="btn ghost small" :disabled="busy" @click="refresh">
+        ><UiButton class="btn ghost small" :disabled="busy" @click="refresh">
           {{ busy ? '处理中…' : '刷新' }}
-        </button>
+        </UiButton>
       </div>
       <template v-if="tab === 'shops'"
         ><div v-if="shops.length" class="xy-shop-grid">
@@ -677,15 +677,15 @@ onBeforeUnmount(() => clearInterval(timer));
                   <td>{{ row.stock }}</td>
                   <td class="mono">{{ row.outer_id || '—' }}</td>
                   <td>{{ date(row.update_time) }}</td>
-                  <td><button class="btn tiny ghost" :disabled="busy">管理</button></td></template
+                  <td><UiButton class="btn tiny ghost" :disabled="busy">管理</UiButton></td></template
                 ><template v-else
                   ><td>
                     <div class="book-title">{{ row.goods?.title || '—' }}</div>
                     <span class="hint mono">{{ row.order_no }}</span>
                     <div v-if="row.localBook">
-                      <button class="link-btn" @click.stop="openLocalBook(row.localBook)">
+                      <UiButton class="link-btn" @click.stop="openLocalBook(row.localBook)">
                         本地图书 #{{ row.localBook.id }} · {{ row.localBook.title }}
-                      </button>
+                      </UiButton>
                     </div>
                     <small v-else class="hint">未关联本地图书，可在详情中指定</small>
                   </td>
@@ -703,7 +703,7 @@ onBeforeUnmount(() => clearInterval(timer));
                   <td>{{ yuan(row.pay_amount) }}</td>
                   <td>{{ date(row.order_time) }}</td>
                   <td class="mono">{{ row.waybill_no || '—' }}</td>
-                  <td><button class="btn tiny ghost" :disabled="busy">详情</button></td></template
+                  <td><UiButton class="btn tiny ghost" :disabled="busy">详情</UiButton></td></template
                 >
               </tr>
             </tbody>
@@ -712,15 +712,15 @@ onBeforeUnmount(() => clearInterval(timer));
         <footer class="xy-pagination">
           <span>共 {{ count }} 条 · 第 {{ page }}/{{ totalPages }} 页</span>
           <div class="head-actions">
-            <button class="btn ghost small" :disabled="busy || page <= 1" @click="changePage(-1)">
-              上一页</button
-            ><button
+            <UiButton class="btn ghost small" :disabled="busy || page <= 1" @click="changePage(-1)">
+              上一页</UiButton
+            ><UiButton
               class="btn ghost small"
               :disabled="busy || page >= totalPages"
               @click="changePage(1)"
             >
               下一页
-            </button>
+            </UiButton>
           </div>
         </footer>
       </section>
@@ -758,22 +758,22 @@ onBeforeUnmount(() => clearInterval(timer));
             </p>
           </details>
           <div class="xy-task-actions">
-            <button class="btn ghost small" :disabled="busy" @click="taskAction(task, 'refresh')">
-              刷新 / 核查</button
-            ><button
+            <UiButton class="btn ghost small" :disabled="busy" @click="taskAction(task, 'refresh')">
+              刷新 / 核查</UiButton
+            ><UiButton
               v-if="task.productId && ['created', 'offline', 'failed'].includes(task.status)"
               class="btn small"
               :disabled="busy"
               @click="taskAction(task, 'publish')"
             >
-              继续上架</button
-            ><button
+              继续上架</UiButton
+            ><UiButton
               v-if="task.productId"
               class="btn ghost small"
               :disabled="busy"
               @click="viewProduct(task.productId)"
             >
-              商品详情</button
+              商品详情</UiButton
             ><a
               v-if="task.itemId"
               class="btn ghost small"
@@ -781,13 +781,13 @@ onBeforeUnmount(() => clearInterval(timer));
               target="_blank"
               rel="noopener noreferrer"
               >打开闲鱼商品 ↗</a
-            ><button
+            ><UiButton
               v-if="task.status === 'published' && !task.imagesVerified"
               class="btn small"
               :disabled="busy"
               @click="taskAction(task, 'verify-images')"
             >
-              已核对页面，图片正常</button
+              已核对页面，图片正常</UiButton
             ><span v-if="task.imagesVerified" class="xy-verified">✓ 已人工核验图片</span>
           </div>
         </article>
@@ -799,7 +799,7 @@ onBeforeUnmount(() => clearInterval(timer));
     </template>
     <div v-else class="panel empty">
       <p>请先配置应用凭据</p>
-      <button class="btn" @click="changeTab('config')">接入设置</button>
+      <UiButton class="btn" @click="changeTab('config')">接入设置</UiButton>
     </div>
 
     <div v-if="detail" class="xy-overlay" @click.self="!busy && (detail = null)">
@@ -815,9 +815,9 @@ onBeforeUnmount(() => clearInterval(timer));
               }}
             </h2>
           </div>
-          <button class="icon-btn" :disabled="busy" aria-label="关闭" @click="detail = null">
+          <UiButton class="icon-btn" :disabled="busy" aria-label="关闭" @click="detail = null">
             ×
-          </button>
+          </UiButton>
         </header>
         <div class="xy-dialog-body">
           <p v-if="error" class="xy-error" role="alert">{{ error }}</p>
@@ -841,12 +841,12 @@ onBeforeUnmount(() => clearInterval(timer));
             </dl>
             <label class="field"
               ><span>操作店铺</span
-              ><select v-model="editShop" class="input" :disabled="busy">
+              ><SearchSelect v-model="editShop" class="input" :disabled="busy">
                 <option v-for="shop in productShops" :key="shop.user_name" :value="shop.user_name">
                   {{ shop.user_name
                   }}{{ shop.item_id && shop.item_id !== '0' ? ' · ' + shop.item_id : '' }}
                 </option>
-              </select></label
+              </SearchSelect></label
             >
             <div class="xy-preview-images">
               <img
@@ -881,7 +881,7 @@ onBeforeUnmount(() => clearInterval(timer));
                     required
                 /></label>
                 <p v-else class="hint">多规格商品仅编辑文案；价格和库存请在闲管家管理。</p>
-                <button class="btn" :disabled="busy">保存商品修改</button>
+                <UiButton class="btn" :disabled="busy">保存商品修改</UiButton>
               </fieldset>
             </form>
             <form v-if="singleSpec" class="xy-inline-form" @submit.prevent="saveStock">
@@ -895,22 +895,22 @@ onBeforeUnmount(() => clearInterval(timer));
                   class="input"
                   required
                   :disabled="busy" /></label
-              ><button class="btn ghost" :disabled="busy">更新库存</button>
+              ><UiButton class="btn ghost" :disabled="busy">更新库存</UiButton>
             </form>
             <div class="xy-task-actions">
-              <button
+              <UiButton
                 class="btn"
                 :disabled="busy || !editShop || detail.product_status === 22"
                 @click="shelf('publish')"
               >
-                上架到所选店铺</button
-              ><button
+                上架到所选店铺</UiButton
+              ><UiButton
                 class="btn ghost"
                 :disabled="busy || detail.product_status !== 22"
                 @click="shelf('unpublish')"
               >
                 下架商品
-              </button>
+              </UiButton>
             </div></template
           >
           <template v-else
@@ -969,9 +969,9 @@ onBeforeUnmount(() => clearInterval(timer));
             <section class="block">
               <h3>本地图书与库存</h3>
               <template v-if="detail.localBook">
-                <button class="link-btn" @click="openLocalBook(detail.localBook)">
+                <UiButton class="link-btn" @click="openLocalBook(detail.localBook)">
                   #{{ detail.localBook.id }} {{ detail.localBook.title }} · 打开图书
-                </button>
+                </UiButton>
                 <p class="hint">
                   {{ detail.bookLinkSource === 'auto' ? '按发布记录自动关联' : '手动关联' }} ·
                   本地库存 {{ detail.localBook.stock }}
@@ -1006,12 +1006,12 @@ onBeforeUnmount(() => clearInterval(timer));
                     placeholder="书名 / ISBN / 作者"
                     @keydown.enter.prevent="action(findLocalBooks)"
                 /></label>
-                <button class="btn ghost" :disabled="busy" @click="action(findLocalBooks)">
+                <UiButton class="btn ghost" :disabled="busy" @click="action(findLocalBooks)">
                   搜索图书
-                </button>
+                </UiButton>
                 <label class="field span-2"
                   ><span>关联图书（搜索结果最多 100 本）</span
-                  ><select v-model="orderBookId" class="input" :disabled="busy">
+                  ><SearchSelect v-model="orderBookId" class="input" :disabled="busy">
                     <option value="">请选择</option>
                     <option
                       v-if="
@@ -1024,21 +1024,21 @@ onBeforeUnmount(() => clearInterval(timer));
                     <option v-for="book in localBooks" :key="book.id" :value="book.id">
                       #{{ book.id }} {{ book.title }} · 库存 {{ book.stock }}
                     </option>
-                  </select></label
+                  </SearchSelect></label
                 >
               </div>
               <div class="head-actions">
-                <button class="btn" :disabled="busy || !orderBookId" @click="saveOrderBook()">
+                <UiButton class="btn" :disabled="busy || !orderBookId" @click="saveOrderBook()">
                   保存关联
-                </button>
-                <button
+                </UiButton>
+                <UiButton
                   v-if="detail.localBook"
                   class="btn ghost"
                   :disabled="busy"
                   @click="saveOrderBook(true)"
                 >
                   解除关联
-                </button>
+                </UiButton>
               </div>
             </section>
             <form v-if="detail.order_status === 12" @submit.prevent="shipOrder">
@@ -1046,12 +1046,12 @@ onBeforeUnmount(() => clearInterval(timer));
               <fieldset :disabled="busy" class="xy-fieldset form-grid two">
                 <label class="field"
                   ><span>快递公司</span
-                  ><select v-model="shipping.express_code" class="input" required>
+                  ><SearchSelect v-model="shipping.express_code" class="input" required>
                     <option value="">选择快递公司</option>
                     <option v-for="company in companies" :key="company.code" :value="company.code">
                       {{ company.express_name }}
                     </option>
-                  </select></label
+                  </SearchSelect></label
                 ><label class="field"
                   ><span>快递单号</span
                   ><input
@@ -1093,7 +1093,7 @@ onBeforeUnmount(() => clearInterval(timer));
                 <p v-else class="hint span-2">
                   使用闲管家后台配置的默认发货地址，请确认该地址已填写。
                 </p>
-                <button class="btn accent" :disabled="busy">确认物流发货</button>
+                <UiButton class="btn accent" :disabled="busy">确认物流发货</UiButton>
               </fieldset>
             </form></template
           >
@@ -1101,15 +1101,15 @@ onBeforeUnmount(() => clearInterval(timer));
         <footer class="xy-dialog-foot">
           <span class="hint">远端操作结果以闲管家 / 闲鱼返回为准。</span>
           <div class="spacer"></div>
-          <button
+          <UiButton
             class="btn ghost"
             :disabled="busy"
             @click="
               detailType === 'product' ? viewProduct(detail.product_id) : viewOrder(detail.order_no)
             "
           >
-            刷新详情</button
-          ><button class="btn" :disabled="busy" @click="detail = null">关闭</button>
+            刷新详情</UiButton
+          ><UiButton class="btn" :disabled="busy" @click="detail = null">关闭</UiButton>
         </footer>
       </section>
     </div>

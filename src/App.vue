@@ -462,7 +462,7 @@ onBeforeUnmount(stopPolling);
 
     <main class="content">
       <nav class="xy-view-tabs" aria-label="工作区切换">
-        <button
+        <UiButton
           v-for="(label, key) in {
             home: '今日待办',
             schools: '学校书单',
@@ -477,7 +477,7 @@ onBeforeUnmount(stopPolling);
           @click="activeView = key"
         >
           {{ label }}
-        </button>
+        </UiButton>
       </nav>
       <XianyuWorkbench
         v-if="activeView === 'xianyu' && ready"
@@ -515,17 +515,17 @@ onBeforeUnmount(stopPolling);
                   placeholder="搜索书名 / 作者 / 出版社 / ISBN"
                 />
               </div>
-              <select v-model="statusFilter" class="input select" :aria-label="filterLabel">
+              <SearchSelect v-model="statusFilter" class="input select" :aria-label="filterLabel">
                 <option value="">全部状态</option>
                 <option value="draft">待整理</option>
                 <option value="ready">待发布</option>
                 <option value="listed">已上架</option>
                 <option value="sold">已售出</option>
-              </select>
+              </SearchSelect>
             </div>
             <div class="head-actions">
-              <button class="btn ghost" @click="createManual">手动新增</button>
-              <button
+              <UiButton class="btn ghost" @click="createManual">手动新增</UiButton>
+              <UiButton
                 class="btn ghost"
                 :disabled="loading"
                 @click="
@@ -534,32 +534,32 @@ onBeforeUnmount(stopPolling);
                 "
               >
                 {{ loading ? '刷新中…' : '刷新' }}
-              </button>
+              </UiButton>
             </div>
           </div>
 
           <div class="business-filters">
-            <select v-model="schoolFilter" class="input" aria-label="适用学校">
+            <SearchSelect v-model="schoolFilter" class="input" aria-label="适用学校">
               <option value="">全部学校</option>
               <option v-for="n in bookSchools" :key="n">{{ n }}</option>
-            </select>
-            <select v-model="yearFilter" class="input" aria-label="适用年份">
+            </SearchSelect>
+            <SearchSelect v-model="yearFilter" class="input" aria-label="适用年份">
               <option value="">全部年份</option>
               <option v-for="n in bookYears" :key="n" :value="n">{{ n }}</option>
-            </select>
+            </SearchSelect>
             <input
               v-model="majorFilter"
               class="input"
               placeholder="筛选适用专业"
               aria-label="适用专业"
             />
-            <select v-model="resourceFilter" class="input" aria-label="经营准备状态">
+            <SearchSelect v-model="resourceFilter" class="input" aria-label="经营准备状态">
               <option value="">全部准备状态</option>
               <option value="physical">缺实体货源</option>
               <option value="digital">缺电子资源</option>
               <option value="complete">资源和货源齐全</option>
               <option value="listed">渠道已上架</option>
-            </select>
+            </SearchSelect>
           </div>
           <BookTable
             :books="filteredBooks"
@@ -641,7 +641,7 @@ onBeforeUnmount(stopPolling);
     <div v-if="bootError" class="boot error">
       <h2>启动失败</h2>
       <p>{{ bootError }}</p>
-      <button class="btn" @click="bootstrap">重试</button>
+      <UiButton class="btn" @click="bootstrap">重试</UiButton>
     </div>
   </div>
 </template>

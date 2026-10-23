@@ -1,4 +1,5 @@
 <script setup>
+import {Settings, RefreshCw, Download} from '@lucide/vue';
 defineProps({
   stats: { type: Object, default: () => ({}) },
   loading: Boolean,
@@ -17,24 +18,24 @@ defineEmits(['refresh', 'taobao', 'kongfz', 'goofish', 'settings', 'export']);
     </div>
 
     <nav class="site-nav">
-      <button class="site-link taobao" @click="$emit('taobao')">
+      <UiButton class="site-link taobao" @click="$emit('taobao')">
         <span class="dot"></span>淘宝货源
-      </button>
-      <button class="site-link kongfz" @click="$emit('kongfz')">
+      </UiButton>
+      <UiButton class="site-link kongfz" @click="$emit('kongfz')">
         <span class="dot"></span>孔夫子找图
-      </button>
-      <button class="site-link goofish" @click="$emit('goofish')">
+      </UiButton>
+      <UiButton class="site-link goofish" @click="$emit('goofish')">
         <span class="dot"></span>闲鱼渠道
-      </button>
+      </UiButton>
     </nav>
 
     <div class="top-actions">
       <span class="live"><span class="live-dot"></span>本地库 {{ stats.total || 0 }} 本</span>
-      <button class="btn ghost small" @click="$emit('export')">导出 CSV</button>
-      <button class="icon-btn" title="设置" @click="$emit('settings')">⚙</button>
-      <button class="btn small" :disabled="loading" @click="$emit('refresh')">
-        {{ loading ? '刷新中' : '刷新' }}
-      </button>
+      <UiButton class="btn ghost small" @click="$emit('export')"><Download :size="15" aria-hidden="true" />导出 CSV</UiButton>
+      <UiButton class="icon-btn" title="设置" @click="$emit('settings')"><Settings :size="17" aria-hidden="true" /></UiButton>
+      <UiButton class="btn small" :disabled="loading" @click="$emit('refresh')">
+        <RefreshCw :size="15" :class="{ spinning: loading }" aria-hidden="true" />{{ loading ? '刷新中' : '刷新' }}
+      </UiButton>
     </div>
   </header>
 </template>
