@@ -1,0 +1,33 @@
+{
+  "name": "taoshu-studio",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "淘书工坊 · 淘宝采集 → 孔夫子找图 → 闲鱼发布",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build",
+    "api:serve": "cargo run --manifest-path src-tauri/Cargo.toml --bin api-server",
+    "api:smoke": "node scripts/smoke.mjs",
+    "kaoyan:collect": "node scripts/kaoyan/collect-books.mjs",
+    "kaoyan:catalog": "node scripts/kaoyan/build-catalog.mjs",
+    "test:kaoyan": "node --test scripts/kaoyan/extract.test.mjs",
+    "regions:import": "node scripts/import-xianyu-regions.mjs",
+    "test:regions": "node --test scripts/regions.test.mjs",
+    "extension": "node scripts/build-extension.mjs",
+    "icon": "node scripts/make-icon.mjs && tauri icon src-tauri/icon-source.png"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.9.0",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "vite": "^8.3.5"
+  }
+}

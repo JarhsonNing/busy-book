@@ -1,0 +1,35 @@
+[package]
+name = "taoshu-studio"
+version = "1.0.0"
+description = "淘书工坊 · 淘宝采集 → 孔夫子找图 → 闲鱼发布"
+authors = ["taoshu"]
+edition = "2021"
+rust-version = "1.77"
+default-run = "taoshu-studio"
+
+[lib]
+name = "taoshu_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+tower-http = { version = "0.6", features = ["cors"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+md5 = "0.7"
+anyhow = "1"
+base64 = "0.22"
+rand = "0.8"
+chrono = "0.4"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

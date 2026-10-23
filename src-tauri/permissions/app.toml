@@ -1,0 +1,16 @@
+# 应用自身命令的权限声明。
+# 远程页面（淘宝/孔夫子/闲鱼）默认拿不到任何应用命令，必须在这里显式放行。
+
+[[permission]]
+identifier = "allow-open-browser"
+description = "允许工作台打开采集、找图、发布窗口。"
+commands.allow = ["open_browser"]
+
+[[permission]]
+identifier = "allow-browser-bridge"
+description = "允许内嵌站点窗口访问本地只读/写入桥接，并回到工作台。"
+commands.allow = ["bridge_fetch", "focus_main"]
+
+[default]
+description = "默认只放行工作台命令。"
+permissions = ["allow-open-browser"]

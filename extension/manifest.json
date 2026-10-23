@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "淘书工坊助手（浏览器兜底）",
+  "version": "1.0.0",
+  "description": "在 Chrome 中为淘宝、孔夫子、闲鱼卖家中心注入淘书工坊浮动工具条。需先启动淘书工坊桌面端。",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://127.0.0.1:8899/*",
+    "https://*.taobao.com/*",
+    "https://*.tmall.com/*",
+    "https://*.kongfz.com/*",
+    "https://*.goofish.com/*",
+    "https://*.xianyu.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "淘书工坊助手"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.taobao.com/*",
+        "https://*.tmall.com/*",
+        "https://*.kongfz.com/*",
+        "https://*.goofish.com/*",
+        "https://*.xianyu.com/*"
+      ],
+      "js": ["content/inject.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

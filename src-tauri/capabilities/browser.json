@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser",
+  "description": "内嵌采集/找图/发布窗口：允许调用本地桥接命令",
+  "windows": ["browser-*"],
+  "remote": {
+    "urls": [
+      "https://*.taobao.com",
+      "https://taobao.com",
+      "https://*.tmall.com",
+      "https://tmall.com",
+      "https://*.kongfz.com",
+      "https://kongfz.com",
+      "https://*.goofish.com",
+      "https://goofish.com",
+      "https://*.xianyu.com",
+      "https://xianyu.com"
+    ]
+  },
+  "permissions": ["core:default", "allow-browser-bridge"]
+}
