@@ -63,3 +63,11 @@ test('parses major labels with letter codes and nested colleges', () => {
     college: '卓越工程师学院',
   });
 });
+
+import { createHost } from './lib/host.mjs';
+test('same subject keeps different editions and authors as separate citations', () => {
+  const host=createHost();
+  const citation={title:'数学分析',publisher:'高等教育出版社',year:'2020',volume:'上册',authors:'甲',edition:'第2版'};
+  const sections=[citation,{...citation,edition:'第3版'},{...citation,authors:'乙'},citation].map(citation=>({subjectRaw:'601 数学分析',stage:'初试',citation}));
+  assert.equal(host.groupSubjects(sections)[0].books.length,3);
+});

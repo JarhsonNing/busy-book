@@ -138,3 +138,11 @@ export function searchUrl(base, book) {
   const separator = root.includes('?') ? '&' : '?';
   return `${root}${separator}key=${encodeURIComponent(key)}`;
 }
+
+export function taobaoSourceUrl(book) {
+  const query = book.isbn || [book.title, book.author, book.edition].filter(Boolean).join(' ');
+  const url = new URL('https://s.taobao.com/search');
+  url.searchParams.set('q', query);
+  url.searchParams.set('taoshuSourceBook', String(book.id));
+  return url.href;
+}

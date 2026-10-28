@@ -519,7 +519,7 @@ pub fn upsert_capture(
         capture_from_row,
     )?;
 
-    let mut book_id: Option<i64> = if item_id.is_empty() {
+    let mut book_id: Option<i64> = if input.as_source || item_id.is_empty() {
         None
     } else {
         conn.query_row(

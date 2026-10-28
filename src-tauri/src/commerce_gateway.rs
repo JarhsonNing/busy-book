@@ -344,7 +344,8 @@ async fn refresh_order(
     browser_ids(&mut result);
     Ok(Json(result))
 }
-async fn ship(State(s): State<AppState>, Path(id): Path<i64>) -> Result<Json<Value>, ApiError> {
+async fn ship(State(s): State<AppState>, Path(id): Path<i64>, Json(input): Json<Value>) -> Result<Json<Value>, ApiError> {
+    if input["confirmed"] != true { return Err(ApiError::bad("请确认物流与收件信息后发货")); }
     let _guard = s
         .xianyu
         .operation
@@ -381,7 +382,12 @@ async fn ship(State(s): State<AppState>, Path(id): Path<i64>) -> Result<Json<Val
             "上次发货结果未知，请核查闲管家后处理，禁止盲目重发",
         ));
     }
-    let attempt=business::rows(&lock(&s),"SELECT data FROM purchase_attempts WHERE fulfillment_id=? AND state='shipped' ORDER BY id DESC LIMIT 1",[id])?.pop().ok_or_else(||ApiError::bad("先填写已发货采购的物流信息"))?;
+    let attempt = if f["data"]["shipping"].is_object() {
+        f["data"]["shipping"].clone()
+    } else {
+        business::rows(&lock(&s),"SELECT data FROM purchase_attempts WHERE fulfillment_id=? AND state='shipped' ORDER BY id DESC LIMIT 1",[id])?.pop().ok_or_else(||ApiError::bad("请先填写快递公司与单号"))?
+    };
+    // Deliberate allowlist: procurement identifiers, cost, source and notes stay local.
     let body = json!({"order_no":f["orderNo"],"waybill_no":attempt["trackingNo"],"express_code":attempt["expressCode"],"express_name":attempt["expressName"]});
     let (_, body) = operation_body("ship", body)?;
     // Persist uncertain state before sending, including process termination between send and receive.

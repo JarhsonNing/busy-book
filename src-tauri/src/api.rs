@@ -92,6 +92,7 @@ impl From<serde_json::Error> for ApiError {
 pub async fn serve(state: AppState) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", state.port)).await?;
     println!("[淘书工坊] 本地接口已启动: {}", state.base_url());
+    crate::commerce::jobs::start(state.clone());
     axum::serve(listener, router(state)).await?;
     Ok(())
 }
@@ -247,6 +248,11 @@ async fn create_capture(
     State(state): State<AppState>,
     Json(input): Json<CaptureInput>,
 ) -> Result<Json<Value>, ApiError> {
+    if let Some(id) = input.source_book_id {
+        if !input.as_source || db::get_book(&lock(&state), id)?.is_none() {
+            return Err(ApiError::bad("货源目标图书无效"));
+        }
+    }
     let settings = {
         let conn = lock(&state);
         db::settings(&conn)
@@ -263,6 +269,9 @@ async fn create_capture(
     };
 
     crate::commerce::capture_candidate(&lock(&state), &capture)?;
+    if let Some(id) = input.source_book_id {
+        crate::commerce::attach_capture_candidate(&lock(&state), &capture, id)?;
+    }
     let book_id = book.as_ref().map(|value| value.id);
     if let Some(book_id) = book_id {
         let main = input

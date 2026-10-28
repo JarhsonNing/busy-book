@@ -34,6 +34,11 @@ impl AppState {
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
         crate::commerce::schema::backup(&conn, &data_dir)?;
         db::init(&conn)?;
+        conn.execute("UPDATE price_searches SET data=json_set(data,'$.state','waiting','$.error','应用已重启，请继续检索') WHERE json_extract(data,'$.state')='searching'", [])?;
+        conn.execute(
+            "UPDATE collection_jobs SET state='queued',stage='恢复任务' WHERE state='running'",
+            [],
+        )?;
         conn.execute("UPDATE xianyu_tasks SET status='unknown',error='应用在创建期间退出，请核查远端状态后继续' WHERE status='preparing'", [])?;
 
         let token_path = data_dir.join(".token");

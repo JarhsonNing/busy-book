@@ -214,8 +214,96 @@ pub fn record_delivery(
     }
     Ok(())
 }
-pub(super) async fn list(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
-    Ok(Json(json!(all(&lock(&s))?)))
+pub(super) async fn list(
+    State(s): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let records = all(&lock(&s))?;
+    Ok(Json(json!(records
+        .into_iter()
+        .filter(|f| query
+            .get("orderNo")
+            .is_none_or(|no| text(f, "orderNo") == no))
+        .collect::<Vec<_>>())))
+}
+// A manual physical confirmation affects only local fulfillment, never the remote product.
+fn physical_order(c: &Connection, mut f: Value, input: &Value) -> Result<Value, ApiError> {
+    if f["kind"] == "digital" {
+        return Err(ApiError::bad("电子订单不能录入实体物流"));
+    }
+    if f["kind"] != "physical" {
+        if input["physicalConfirmed"] != true {
+            return Err(ApiError::bad("请确认这是实物订单"));
+        }
+        let next = order_state(
+            "physical",
+            f["snapshot"]["order_status"].as_i64().unwrap_or(0),
+            f["snapshot"]["refund_status"].as_i64().unwrap_or(0),
+        );
+        f["kind"] = json!("physical");
+        f["state"] = json!(next);
+        f["data"]["manualPhysical"] = json!(true);
+        c.execute(
+            "UPDATE fulfillment_orders SET kind='physical',state=?,data=?,updated_at=? WHERE id=?",
+            params![next, f["data"].to_string(), db::now(), f["id"].as_i64()],
+        )?;
+    }
+    Ok(f)
+}
+fn editable_shipping(f: &Value) -> Result<(), ApiError> {
+    if f["data"]["shippingUncertain"] == true || f["state"] == "shipping_unknown" {
+        return Err(ApiError::bad("发货结果待核查，请先刷新远端状态"));
+    }
+    if f["snapshot"]["order_status"] != 12
+        || refund_blocks(f["snapshot"]["refund_status"].as_i64().unwrap_or(0))
+    {
+        return Err(ApiError::bad("只有待发货且无进行中售后的订单可填写物流"));
+    }
+    if f["snapshot"]["goods"]["quantity"].as_u64().unwrap_or(0) == 0 {
+        return Err(ApiError::bad("请先核对订单数量"));
+    }
+    Ok(())
+}
+fn logistics(input: &Value) -> Result<Value, ApiError> {
+    let mut data = json!({});
+    for field in ["trackingNo", "expressCode", "expressName"] {
+        let value = required(input, field)?;
+        if value.len() > 120 || value.chars().any(char::is_control) {
+            return Err(ApiError::bad("物流字段格式无效"));
+        }
+        data[field] = json!(value);
+    }
+    data["checkedAt"] = json!(db::now());
+    Ok(data)
+}
+pub(super) async fn tracking(
+    State(s): State<AppState>,
+    Path(id): Path<i64>,
+    Json(input): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let _operation = s
+        .xianyu
+        .operation
+        .try_lock()
+        .map_err(|_| ApiError::bad("远端操作进行中，请稍后保存物流"))?;
+    let mut c = lock(&s);
+    let tx = c.transaction()?;
+    let f = physical_order(&tx, get(&tx, id)?, &input)?;
+    editable_shipping(&f)?;
+    if input["confirmed"] != true {
+        return Err(ApiError::bad("请核对物流单号与收件信息"));
+    }
+    let mut shipping = logistics(&input)?;
+    shipping["origin"] = json!("manual");
+    let mut data = f["data"].clone();
+    data["shipping"] = shipping.clone();
+    tx.execute(
+        "UPDATE fulfillment_orders SET state='ready_to_ship',data=?,updated_at=? WHERE id=?",
+        params![data.to_string(), db::now(), id],
+    )?;
+    event(&tx, "fulfillment", id, "tracking_saved", &shipping)?;
+    tx.commit()?;
+    Ok(Json(json!({"ok":true})))
 }
 pub(super) async fn detail(
     State(s): State<AppState>,
@@ -233,9 +321,20 @@ pub(super) async fn purchase(
     Path(id): Path<i64>,
     Json(v): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    let _operation = s
+        .xianyu
+        .operation
+        .try_lock()
+        .map_err(|_| ApiError::bad("远端操作进行中，请稍后保存采购"))?;
     let mut c = lock(&s);
     let tx = c.transaction()?;
     let f = get(&tx, id)?;
+    let manual = v["platform"] == "taobao";
+    let f = if manual {
+        physical_order(&tx, f, &v)?
+    } else {
+        f
+    };
     if f["kind"] != "physical" {
         return Err(ApiError::bad("只有已确认实体规格的订单可采购"));
     }
@@ -264,18 +363,38 @@ pub(super) async fn purchase(
     let current = attempts
         .iter()
         .find(|a| !["canceled", "replaced"].contains(&text(a, "state")));
-    let source_id = v["sourceId"]
-        .as_i64()
-        .ok_or_else(|| ApiError::bad("请选择货源"))?;
-    let source = source_list(&tx, f["bookId"].as_i64())?
-        .into_iter()
-        .find(|v| v["id"] == source_id)
-        .ok_or_else(|| ApiError::bad("货源不属于本书"))?;
-    if state != "canceled"
-        && (text(&source["data"], "status") != "available" || source["data"]["dropship"] != true)
-    {
-        return Err(ApiError::bad("请选择已核验且支持代发的货源"));
-    }
+    let source_id = v["sourceId"].as_i64();
+    let source = if manual && source_id.is_none() {
+        if !text(&v, "url").is_empty() {
+            let url = reqwest::Url::parse(text(&v, "url"))
+                .map_err(|_| ApiError::bad("淘宝商品链接无效"))?;
+            if url.scheme() != "https"
+                || !["item.taobao.com", "detail.tmall.com", "www.taobao.com"]
+                    .contains(&url.host_str().unwrap_or(""))
+                || !url.username().is_empty()
+                || url.password().is_some()
+            {
+                return Err(ApiError::bad("请使用淘宝或天猫商品链接"));
+            }
+        }
+        json!({"id":null,"data":{"url":text(&v,"url"),"shop":text(&v,"shop"),"sku":text(&v,"sku")},"origin":"manual-purchase"})
+    } else {
+        let source_id = source_id.ok_or_else(|| ApiError::bad("请选择货源"))?;
+        let bid = f["bookId"]
+            .as_i64()
+            .ok_or_else(|| ApiError::bad("请先关联图书，或录入手动淘宝采购"))?;
+        let source = source_list(&tx, Some(bid))?
+            .into_iter()
+            .find(|v| v["id"] == source_id)
+            .ok_or_else(|| ApiError::bad("货源不属于本书"))?;
+        if state != "canceled"
+            && (text(&source["data"], "status") != "available"
+                || source["data"]["dropship"] != true)
+        {
+            return Err(ApiError::bad("请选择已核验且支持代发的货源"));
+        }
+        source
+    };
     if state == "canceled" && current.is_none() {
         return Err(ApiError::bad("没有可取消的采购记录"));
     }
@@ -283,7 +402,7 @@ pub(super) async fn purchase(
         if old["state"] == "ordered" && state == "draft" {
             return Err(ApiError::bad("已采购不能退回待下单，请先核实取消采购"));
         }
-        if old["data"]["source"]["id"] != source_id && old["state"] != "draft" {
+        if old["data"]["source"]["id"].as_i64() != source_id && old["state"] != "draft" {
             return Err(ApiError::bad(
                 "已下单采购请先核实取消，再更换货源，避免重复采购",
             ));
@@ -293,16 +412,26 @@ pub(super) async fn purchase(
         }
     }
     if ["ordered", "shipped"].contains(&state.as_str()) {
-        required(&v, "purchaseNo")?;
-        amount(&v, "actualCost", false)?;
+        let no = required(&v, "purchaseNo")?;
+        if no.len() > 100 || no.chars().any(char::is_whitespace) {
+            return Err(ApiError::bad("采购订单号格式无效"));
+        }
+        if let Some(old) = current {
+            if old["state"] != "draft" && text(&old["data"], "purchaseNo") != no {
+                return Err(ApiError::bad("请先核实取消原采购，再关联新订单"));
+            }
+        }
+        let duplicate: bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM purchase_attempts p JOIN fulfillment_orders f ON f.id=p.fulfillment_id WHERE f.app_key=? AND f.id<>? AND p.state NOT IN ('canceled','replaced') AND json_extract(p.data,'$.purchaseNo')=?)",params![app_key(&tx),id,no],|r|r.get(0))?;
+        if duplicate {
+            return Err(ApiError::bad("该采购订单已关联另一笔销售订单"));
+        }
+        amount(&v, "actualCost", manual)?;
         if v["confirmed"] != true {
             return Err(ApiError::bad("请核对版次、数量、收件信息和实际付款金额"));
         }
     }
     if state == "shipped" {
-        required(&v, "trackingNo")?;
-        required(&v, "expressCode")?;
-        required(&v, "expressName")?;
+        logistics(&v)?;
     }
     if state == "canceled" {
         required(&v, "note")?;
@@ -311,6 +440,9 @@ pub(super) async fn purchase(
         }
     }
     let mut data = v.clone();
+    if manual {
+        data["platform"] = json!("taobao");
+    }
     if state == "canceled" {
         let old = current.unwrap();
         let paid = old["data"]["actualCost"].as_f64().unwrap_or(0.0);
@@ -321,12 +453,12 @@ pub(super) async fn purchase(
         for field in ["purchaseNo", "trackingNo", "expressCode", "expressName"] {
             data[field] = old["data"][field].clone();
         }
-        data["actualCost"] = json!(paid);
+        data["actualCost"] = old["data"]["actualCost"].clone();
     }
     data["source"] = source;
     data["quantity"] = f["snapshot"]["goods"]["quantity"].clone();
     let replace = current
-        .map(|old| old["data"]["source"]["id"] != source_id)
+        .map(|old| old["data"]["source"]["id"].as_i64() != source_id)
         .unwrap_or(false);
     if replace {
         tx.execute(
@@ -343,18 +475,29 @@ pub(super) async fn purchase(
     } else {
         tx.execute("INSERT INTO purchase_attempts(fulfillment_id,state,data,created_at,updated_at) VALUES(?,?,?,?,?)",params![id,state,data.to_string(),db::now(),db::now()])?;
     }
-    let next = if ["after_sale", "canceled_review"].contains(&text(&f, "state")) {
-        text(&f, "state")
-    } else {
-        match state.as_str() {
-            "ordered" => "awaiting_tracking",
-            "shipped" => "ready_to_ship",
-            _ => "to_purchase",
-        }
-    };
+    let mut fulfillment_data = f["data"].clone();
+    if state == "shipped" {
+        let active_id: i64 = tx.query_row("SELECT id FROM purchase_attempts WHERE fulfillment_id=? AND state='shipped' ORDER BY id DESC LIMIT 1",[id],|r|r.get(0))?;
+        let mut shipping = logistics(&v)?;
+        shipping["origin"] = json!("purchase");
+        shipping["purchaseId"] = json!(active_id);
+        fulfillment_data["shipping"] = shipping;
+    } else if state == "canceled" && fulfillment_data["shipping"]["origin"] == "purchase" {
+        fulfillment_data.as_object_mut().unwrap().remove("shipping");
+    }
+    let next =
+        if ["after_sale", "canceled_review", "shipped", "completed"].contains(&text(&f, "state")) {
+            text(&f, "state")
+        } else {
+            match state.as_str() {
+                "ordered" => "awaiting_tracking",
+                "shipped" => "ready_to_ship",
+                _ => "to_purchase",
+            }
+        };
     tx.execute(
-        "UPDATE fulfillment_orders SET state=?,updated_at=? WHERE id=?",
-        params![next, db::now(), id],
+        "UPDATE fulfillment_orders SET state=?,data=?,updated_at=? WHERE id=?",
+        params![next, fulfillment_data.to_string(), db::now(), id],
     )?;
     event(&tx, "fulfillment", id, "purchase", &data)?;
     tx.commit()?;

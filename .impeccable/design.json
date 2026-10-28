@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T18:31:19.3528937+08:00",
+  "title": "Design System: 淘书工坊",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "页面灰白",
+        "canonical": "#f5f7f8"
+      },
+      "paper-2": {
+        "role": "neutral",
+        "displayName": "次级浅灰",
+        "canonical": "#edf1f3"
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "内容白",
+        "canonical": "#ffffff"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "正文深灰",
+        "canonical": "#202c35"
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "次级深灰",
+        "canonical": "#354650"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "辅助灰",
+        "canonical": "#657581"
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "分隔灰",
+        "canonical": "#dfe5e9"
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "控件边框灰",
+        "canonical": "#bbc8ce"
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "操作青绿",
+        "canonical": "#137d72"
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "选中浅青绿",
+        "canonical": "#e9f4f1"
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "危险红",
+        "canonical": "#b03f43"
+      },
+      "success-text": {
+        "role": "semantic",
+        "displayName": "成功文字",
+        "canonical": "#287451"
+      },
+      "success-bg": {
+        "role": "semantic",
+        "displayName": "成功背景",
+        "canonical": "#e8f3ee"
+      },
+      "warning-text": {
+        "role": "semantic",
+        "displayName": "警告文字",
+        "canonical": "#95621d"
+      },
+      "warning-bg": {
+        "role": "semantic",
+        "displayName": "警告背景",
+        "canonical": "#fcf1dd"
+      }
+    },
+    "shadows": [
+      {
+        "name": "modal",
+        "value": "0 12px 48px #1327311a",
+        "purpose": "弹窗层级"
+      },
+      {
+        "name": "nav-active",
+        "value": "0 1px 3px #2338430a",
+        "purpose": "选中导航"
+      }
+    ],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "1150px"
+      },
+      {
+        "name": "narrow",
+        "value": "800px"
+      }
+    ],
+    "focus": {
+      "outline": "2px solid #137d72",
+      "outlineOffset": "3px"
+    }
+  },
+  "components": [
+    {
+      "name": "主按钮",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "当前流程的主操作",
+      "html": "<button class=\"ds-primary\">保存</button>",
+      "css": ".ds-primary{font:550 13px \"Segoe UI\",\"Microsoft YaHei\",sans-serif;min-height:34px;padding:7px 13px;border-radius:5px;border:1px solid var(--line-strong, #bbc8ce);background:var(--accent, #137d72);color:#fff;border-color:var(--accent, #137d72)}.ds-primary:hover{background:#116d64}.ds-primary:disabled{cursor:not-allowed;opacity:.5}.ds-primary:focus-visible{outline:2px solid var(--focus, #137d72);outline-offset:3px}"
+    },
+    {
+      "name": "次按钮",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "次要或辅助操作",
+      "html": "<button class=\"ds-secondary\">刷新</button>",
+      "css": ".ds-secondary{font:550 13px \"Segoe UI\",\"Microsoft YaHei\",sans-serif;min-height:34px;padding:7px 13px;border-radius:5px;border:1px solid var(--line-strong, #bbc8ce);background:var(--card, #fff);color:var(--ink, #202c35)}.ds-secondary:hover{background:#f0f5f4;border-color:#8aa8a2}.ds-secondary:disabled{cursor:not-allowed;opacity:.5}.ds-secondary:focus-visible{outline:2px solid var(--focus, #137d72);outline-offset:3px}"
+    },
+    {
+      "name": "输入框",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "数据输入与检索",
+      "html": "<input class=\"ds-input\" aria-label=\"书名\" placeholder=\"书名 / ISBN\">",
+      "css": ".ds-input{font:13px \"Segoe UI\",\"Microsoft YaHei\",sans-serif;min-height:36px;padding:8px 10px;border:1px solid var(--line, #dfe5e9);border-radius:5px;background:var(--card, #fff);color:var(--ink, #202c35)}.ds-input:focus-visible{outline:2px solid var(--accent, #137d72);outline-offset:3px}.ds-input:focus{border-color:var(--focus, #137d72)}"
+    },
+    {
+      "name": "选中导航",
+      "kind": "nav",
+      "refersTo": "nav-active",
+      "description": "当前一级模块",
+      "html": "<button class=\"ds-nav\" aria-current=\"page\">图书</button>",
+      "css": ".ds-nav{font:550 14px \"Segoe UI\",\"Microsoft YaHei\",sans-serif;padding:12px 17px;border:0;border-radius:6px;background:var(--card, #fff);color:var(--accent, #137d72);box-shadow:0 1px 3px #2338430a}.ds-nav:disabled{cursor:not-allowed;opacity:.5}.ds-nav:focus-visible{outline:2px solid var(--focus, #137d72);outline-offset:3px}"
+    },
+    {
+      "name": "数据面",
+      "kind": "card",
+      "refersTo": "data-surface",
+      "description": "承载表格等数据，不作装饰统计卡",
+      "html": "<div class=\"ds-surface\">图书列表</div>",
+      "css": ".ds-surface{font:14px \"Segoe UI\",\"Microsoft YaHei\",sans-serif;color:var(--ink, #202c35);background:var(--card, #fff);border:1px solid var(--line, #dfe5e9);border-radius:6px;overflow-x:auto}"
+    }
+  ],
+  "narrative": {
+    "northStar": "图书经营台",
+    "overview": "简洁浅色、紧凑列表、明确操作的中文桌面图书经营界面。",
+    "keyCharacteristics": [
+      "四入口",
+      "共享图书详情",
+      "操作与状态优先"
+    ],
+    "rules": [
+      {
+        "name": "语义状态",
+        "body": "颜色配合文字；未知或待确认结果不显示成功。",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "使用短字段和明确动作",
+      "保留键盘焦点和错误恢复"
+    ],
+    "donts": [
+      "不使用装饰性统计卡",
+      "不新增独立货源中心或图片中心",
+      "不显示大段常驻说明"
+    ]
+  }
+}

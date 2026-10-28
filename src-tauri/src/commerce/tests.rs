@@ -2,6 +2,186 @@ use super::*;
 use crate::models::{BookPatch, CaptureInput};
 use std::{fs, path::PathBuf};
 
+#[tokio::test]
+async fn manual_shipping_needs_no_purchase_and_preserves_local_tracking_across_sync() {
+    let f=Fixture::new();let o=order("manual-ship","unmapped");f.observe(&o);
+    let id=f.orders()[0]["id"].as_i64().unwrap();
+    let mut input=json!({"trackingNo":"YT12345678","expressCode":"YTO","expressName":"圆通","confirmed":true});
+    assert!(fulfillment::tracking(State(f.state.clone()),Path(id),Json(input.clone())).await.is_err());
+    assert_eq!(f.orders()[0]["kind"],"unknown");
+    input["physicalConfirmed"]=json!(true);
+    let _ = fulfillment::tracking(State(f.state.clone()),Path(id),Json(input.clone())).await.unwrap();
+    assert!(fulfillment::purchase_list(&lock(&f.state),id).unwrap().is_empty());
+    f.observe(&o);
+    assert_eq!(f.orders()[0]["state"],"ready_to_ship");
+    assert_eq!(f.orders()[0]["snapshot"]["order_status"],12);
+    assert_eq!(f.orders()[0]["data"]["shipping"]["trackingNo"],"YT12345678");
+    {
+        let operation = f.state.xianyu.operation.lock().await;
+        assert!(fulfillment::tracking(State(f.state.clone()),Path(id),Json(input.clone())).await.is_err());
+        drop(operation);
+    }
+    lock(&f.state).execute("UPDATE fulfillment_orders SET data=json_set(data,'$.shippingUncertain',json('true')) WHERE id=?",[id]).unwrap();
+    assert!(fulfillment::tracking(State(f.state.clone()),Path(id),Json(input.clone())).await.is_err());
+    let bid=f.book("电子用书");f.channel(bid,"mixed");f.observe(&order("digital-only","9007199254741002"));
+    let digital=f.orders().into_iter().find(|v|v["orderNo"]=="digital-only").unwrap()["id"].as_i64().unwrap();
+    assert!(fulfillment::tracking(State(f.state.clone()),Path(digital),Json(input)).await.is_err());
+}
+
+#[tokio::test]
+async fn manually_linked_taobao_orders_are_internal_unique_and_keep_unknown_cost() {
+    let f=Fixture::new();let o=order("local-link","unmapped");f.observe(&o);f.observe(&order("other-sale","unmapped"));
+    let records=f.orders();let id=records.iter().find(|v|v["orderNo"]=="local-link").unwrap()["id"].as_i64().unwrap();
+    let other=records.iter().find(|v|v["orderNo"]=="other-sale").unwrap()["id"].as_i64().unwrap();
+    let mut input=json!({"platform":"taobao","purchaseNo":"TB887766","state":"ordered","actualCost":null,"url":"https://item.taobao.com/item.htm?id=12","shop":"内部供货店","sku":"第2版","note":"内部备注","confirmed":true,"physicalConfirmed":true});
+    let _ = fulfillment::purchase(State(f.state.clone()),Path(id),Json(input.clone())).await.unwrap();
+    let _ = fulfillment::purchase(State(f.state.clone()),Path(id),Json(input.clone())).await.unwrap();
+    assert_eq!(fulfillment::purchase_list(&lock(&f.state),id).unwrap().len(),1);
+    assert!(fulfillment::purchase(State(f.state.clone()),Path(other),Json(input.clone())).await.is_err());
+    input["state"]=json!("shipped");input["trackingNo"]=json!("SF8899");input["expressCode"]=json!("SF");input["expressName"]=json!("顺丰");
+    let _ = fulfillment::purchase(State(f.state.clone()),Path(id),Json(input.clone())).await.unwrap();f.observe(&o);
+    let details=fulfillment::detail(State(f.state.clone()),Path(id)).await.unwrap().0;
+    assert_eq!(details["state"],"ready_to_ship");assert_eq!(details["snapshot"]["order_status"],12);
+    assert_eq!(details["data"]["shipping"]["origin"],"purchase");assert_eq!(details["purchases"][0]["data"]["purchaseNo"],"TB887766");
+    assert!(details["purchases"][0]["data"]["actualCost"].is_null());
+    let restarted=AppState::new(f.path.clone(),0).unwrap();
+    let persisted=fulfillment::detail(State(restarted.clone()),Path(id)).await.unwrap().0;
+    assert_eq!(persisted["state"],"ready_to_ship");assert_eq!(persisted["purchases"][0]["data"]["purchaseNo"],"TB887766");drop(restarted);
+    input["purchaseNo"]=json!("different");assert!(fulfillment::purchase(State(f.state.clone()),Path(id),Json(input.clone())).await.is_err());
+    input["purchaseNo"]=json!("TB887766");input["state"]=json!("canceled");input["supplierRefund"]=json!(0);
+    let _ = fulfillment::purchase(State(f.state.clone()),Path(id),Json(input)).await.unwrap();
+    let details=fulfillment::detail(State(f.state.clone()),Path(id)).await.unwrap().0;
+    assert!(details["data"]["shipping"].is_null());assert!(details["purchases"][0]["data"]["actualCost"].is_null());
+}
+
+#[tokio::test]
+async fn lowest_price_scroll_batches_are_durable_deduplicated_and_cancelable() {
+    let f = Fixture::new(); let bid = f.book("数学分析");
+    let call = |body:Value| price_search::control(State(f.state.clone()),Path(bid),Json(body));
+    let first = call(json!({"action":"start"})).await.unwrap().0;
+    let req = first["requestId"].clone();
+    assert_eq!(first["query"],"9787300000001");
+    assert!(first["searchUrl"].as_str().unwrap().contains("sort=price-asc"));
+    let item = |id:i64,price:f64| json!({"url":format!("https://item.taobao.com/item.htm?id={id}"),"title":"候选版本","shop":"教材店","price":price});
+    let p1 = call(json!({"action":"page","requestId":req,"page":1,"items":[item(1,0.5),item(1,0.5),item(2,10.0)]})).await.unwrap().0;
+    assert_eq!(p1["count"],2); assert_eq!(p1["pagesDone"],1);
+    assert!(!p1["searchUrl"].as_str().unwrap().contains("s=44"));
+    assert!(!p1["searchUrl"].as_str().unwrap().contains("taoshuPricePage"));
+    assert_eq!(p1["mode"],"scroll"); assert_eq!(p1["batchesDone"],1); assert_eq!(p1["maxItems"],180);
+    assert!(p1["bestVerified"].is_null()); assert_eq!(p1["bestDisplay"]["displayPrice"],0.5);
+    let repeated = call(json!({"action":"page","requestId":req,"page":2,"items":[item(1,0.5)]})).await.unwrap().0;
+    assert_eq!(repeated["state"],"waiting"); assert_eq!(repeated["pagesDone"],1);
+    let _ = call(json!({"action":"resume","requestId":req})).await.unwrap();
+    let _ = call(json!({"action":"page","requestId":req,"page":2,"items":[item(2,10.0),item(3,11.0)]})).await.unwrap();
+    let complete = call(json!({"action":"page","requestId":req,"page":3,"items":[item(4,20.0)]})).await.unwrap().0;
+    assert_eq!(complete["state"],"completed"); assert_eq!(complete["count"],4);
+    assert_eq!(call(json!({"action":"page","requestId":req,"page":3,"items":[item(4,20.0)]})).await.unwrap().0["count"],4);
+    let new = call(json!({"action":"start"})).await.unwrap().0;
+    assert!(call(json!({"action":"page","requestId":req,"page":1,"items":[item(99,1.0)]})).await.is_err());
+    let restarted = AppState::new(f.path.clone(),0).unwrap();
+    assert_eq!(price_search::status(State(restarted.clone()),Path(bid)).await.unwrap().0["state"],"waiting");
+    drop(restarted);
+    let _ = call(json!({"action":"resume","requestId":new["requestId"]})).await.unwrap();
+    let other = f.book("另一本书");
+    let _ = price_search::control(State(f.state.clone()),Path(other),Json(json!({"action":"start"}))).await.unwrap();
+    assert_eq!(price_search::status(State(f.state.clone()),Path(bid)).await.unwrap().0["state"],"waiting");
+    assert!(call(json!({"action":"page","requestId":new["requestId"],"page":1,"items":[item(99,1.0)]})).await.is_err());
+    let _ = call(json!({"action":"resume","requestId":new["requestId"]})).await.unwrap();
+    assert_eq!(price_search::status(State(f.state.clone()),Path(other)).await.unwrap().0["state"],"waiting");
+    assert_eq!(call(json!({"action":"cancel","requestId":new["requestId"]})).await.unwrap().0["state"],"canceled");
+    assert!(call(json!({"action":"page","requestId":new["requestId"],"page":1,"items":[item(99,1.0)]})).await.is_err());
+    assert_eq!(lock(&f.state).query_row("SELECT COUNT(*) FROM books",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+}
+
+#[tokio::test]
+async fn scroll_completion_keeps_price_labels_rejects_empty_and_preserves_old_tasks() {
+    let f = Fixture::new(); let bid = f.book("滚动测试");
+    let call = |body:Value| price_search::control(State(f.state.clone()),Path(bid),Json(body));
+    let first = call(json!({"action":"start"})).await.unwrap().0;
+    let req = first["requestId"].clone();
+    assert!(call(json!({"action":"finish","requestId":req,"reason":"visible-end"})).await.is_err());
+    assert!(call(json!({"action":"batch","requestId":req,"batch":2,"items":[]})).await.is_err());
+    let batch = call(json!({"action":"batch","requestId":req,"batch":1,"items":[{"url":"https://item.taobao.com/item.htm?id=551","title":"补贴候选","price":52.48,"priceLabel":"补贴后"}]})).await.unwrap().0;
+    assert_eq!(batch["count"],1); assert_eq!(batch["batchesDone"],1);
+    assert_eq!(batch["rows"][0]["priceLabel"],"补贴后");
+    assert_eq!(batch["bestDisplay"]["displayPrice"],52.48); assert!(batch["bestVerified"].is_null());
+    let replay = call(json!({"action":"batch","requestId":req,"batch":1,"items":[]})).await.unwrap().0;
+    assert_eq!(replay["count"],1);
+    let _ = call(json!({"action":"waiting","requestId":req,"error":"模拟暂停"})).await.unwrap();
+    assert!(call(json!({"action":"finish","requestId":req,"reason":"visible-end"})).await.is_err());
+    let _ = call(json!({"action":"resume","requestId":req})).await.unwrap();
+    let done = call(json!({"action":"finish","requestId":req,"reason":"visible-end"})).await.unwrap().0;
+    assert_eq!(done["state"],"completed"); assert_eq!(done["completionReason"],"visible-end");
+    assert_eq!(call(json!({"action":"finish","requestId":req,"reason":"visible-end"})).await.unwrap().0["count"],1);
+    // Existing snapshots keep their counters and candidates, but resume from the real page.
+    lock(&f.state).execute("UPDATE price_searches SET data=? WHERE book_id=?",params![json!({"requestId":"old-task","query":"教材","state":"waiting","pagesDone":1,"maxPages":3,"items":batch["items"]}).to_string(),bid]).unwrap();
+    let legacy = price_search::status(State(f.state.clone()),Path(bid)).await.unwrap().0;
+    assert_eq!(legacy["batchesDone"],1);assert_eq!(legacy["count"],1);
+    assert!(!legacy["searchUrl"].as_str().unwrap().contains("taoshuPricePage"));
+}
+
+#[tokio::test]
+async fn lowest_verified_price_includes_freight_condition_and_dropship_without_overwriting_quotes() {
+    let f = Fixture::new(); let bid = f.book("数学分析");
+    let condition = db::get_book(&lock(&f.state),bid).unwrap().unwrap().condition;
+    let started = price_search::control(State(f.state.clone()),Path(bid),Json(json!({"action":"start"}))).await.unwrap().0;
+    for (id,price,freight,dropship,kind) in [(11,20.0,Some(3.0),true,condition.clone()),(12,10.0,Some(20.0),true,condition.clone()),(13,0.1,None,true,condition.clone()),(14,0.1,Some(0.0),false,condition.clone()),(15,0.1,Some(0.0),true,"不同品相".into())] {
+        let _ = save_source(State(f.state.clone()),Json(json!({"bookId":bid,"data":{"url":format!("https://item.taobao.com/item.htm?id={id}"),"title":"核验货源","shop":"测试店","sku":"已核对版次册次","condition":kind,"status":"available","checkedAt":"2026-10-27","dropship":dropship,"price":price,"freight":freight}}))).await.unwrap();
+    }
+    let v = price_search::status(State(f.state.clone()),Path(bid)).await.unwrap().0;
+    assert_eq!(v["bestVerified"]["total"],23.0);
+    assert_eq!(v["rows"].as_array().unwrap().iter().filter(|r|!r["total"].is_null()).count(),2);
+    let _ = price_search::control(State(f.state.clone()),Path(bid),Json(json!({"action":"page","requestId":started["requestId"],"page":1,"items":[{"url":"https://item.taobao.com/item.htm?id=11","title":"最低规格起价","price":0.01}]}))).await.unwrap();
+    let after = price_search::status(State(f.state.clone()),Path(bid)).await.unwrap().0;
+    assert_eq!(after["bestDisplay"]["displayPrice"],0.01);
+    assert_eq!(after["bestVerified"]["total"],23.0);
+    assert_eq!(after["bestVerified"]["source"]["data"]["price"],20.0);
+    lock(&f.state).execute("UPDATE books SET condition='' WHERE id=?",[bid]).unwrap();
+    assert!(price_search::status(State(f.state.clone()),Path(bid)).await.unwrap().0["bestVerified"].is_null());
+}
+
+#[test]
+fn taobao_search_candidates_are_book_scoped_idempotent_and_never_move_reviewed_sources() {
+    let f = Fixture::new();
+    let a = f.book("第5版");
+    let b = f.book("第6版");
+    let input: CaptureInput = serde_json::from_value(json!({"asSource":true,"sourceBookId":a,"itemId":"1234","title":"多版本商品","price":12,"url":"https://item.taobao.com/item.htm?id=1234"})).unwrap();
+    let c = lock(&f.state);
+    let (capture,book,created) = db::upsert_capture(&c,&input,0.3,5.0,"九成新").unwrap();
+    assert!(book.is_none() && !created);
+    capture_candidate(&c,&capture).unwrap();
+    attach_capture_candidate(&c,&capture,a).unwrap();
+    let source_a = source_list(&c,Some(a)).unwrap()[0].clone();
+    assert_eq!(source_a["data"]["status"],"pending");
+    assert_eq!(source_a["data"]["dropship"],false);
+    c.execute("UPDATE book_sources SET data=json_set(data,'$.sku','第5版','$.price',10,'$.status','available') WHERE book_id=?",[a]).unwrap();
+    capture_candidate(&c,&capture).unwrap();
+    attach_capture_candidate(&c,&capture,b).unwrap();
+    attach_capture_candidate(&c,&capture,b).unwrap();
+    assert_eq!(source_list(&c,Some(a)).unwrap()[0]["data"]["price"],10);
+    assert_eq!(source_list(&c,Some(a)).unwrap()[0]["data"]["sku"],"第5版");
+    assert_eq!(source_list(&c,Some(b)).unwrap().len(),1);
+    assert_eq!(source_list(&c,Some(b)).unwrap()[0]["data"]["status"],"pending");
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM books",[],|r|r.get::<_,i64>(0)).unwrap(),2);
+}
+
+#[tokio::test]
+async fn online_book_search_keeps_evidence_and_rejects_expired_results() {
+    let f = Fixture::new();
+    lock(&f.state).execute("INSERT INTO school_requirements(id,school,year,major,data,updated_at) VALUES('online-test','学校',2027,'专业',?,'now')",
+        [json!({"raw":"数据库 第5版","candidate":{"title":"数据库","authors":["王珊"],"edition":"第5版"}}).to_string()]).unwrap();
+    let first = book_search::update(State(f.state.clone()),Path("online-test".into()),Json(json!({"action":"start"}))).await.unwrap().0;
+    assert_eq!(first["query"],"数据库 王珊 第5版");
+    assert!(first["searchUrl"].as_str().unwrap().starts_with("https://search.kongfz.com/product/"));
+    let second = book_search::update(State(f.state.clone()),Path("online-test".into()),Json(json!({"action":"start","query":"9787040406641"}))).await.unwrap().0;
+    assert!(book_search::update(State(f.state.clone()),Path("online-test".into()),Json(json!({"requestId":first["requestId"],"items":[]}))).await.is_err());
+    let result = book_search::update(State(f.state.clone()),Path("online-test".into()),Json(json!({"requestId":second["requestId"],"items":[{"title":"数据库系统概论","edition":"第5版","isbn":"9787040406641","sourceUrl":"https://book.kongfz.com/123/456/"}]}))).await.unwrap().0;
+    assert_eq!(result["state"],"completed");
+    assert_eq!(result["items"][0]["isbn"],"9787040406641");
+    assert_eq!(book_search::status(State(f.state.clone()),Path("online-test".into())).await.unwrap().0,result);
+    assert_eq!(lock(&f.state).query_row("SELECT COUNT(*) FROM books",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+}
+
 struct Fixture {
     state: AppState,
     path: PathBuf,
@@ -521,4 +701,182 @@ async fn invalid_resources_create_tasks_and_finance_never_assumes_zero_cost() {
         .unwrap()
         .iter()
         .any(|t| text(t, "reason").contains("资源失效")));
+}
+
+#[tokio::test]
+async fn library_filters_paginate_and_keep_zero_stock_dropship_books() {
+    let f = Fixture::new();
+    let bid = f.book("数学分析");
+    let other = f.book("线性代数");
+    lock(&f.state)
+        .execute("UPDATE books SET stock=0 WHERE id=?", [bid])
+        .unwrap();
+    source(&f, bid, true, 15.0).await;
+    let _ = catalog::import(State(f.state.clone()), Json(catalog()))
+        .await
+        .unwrap();
+    let records = catalog::list(State(f.state.clone())).await.unwrap().0;
+    let rid = text(
+        records["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["data"]["school"] == "甲大学")
+            .unwrap(),
+        "id",
+    );
+    let _ = catalog::confirm(
+        State(f.state.clone()),
+        Path(rid.into()),
+        Json(json!({"bookId":bid,"editionChecked":true})),
+    )
+    .await
+    .unwrap();
+    for (filter, total) in [
+        (json!({"q":"数学分析"}), 1),
+        (json!({"readiness":"sources"}), 1),
+        (json!({"school":"甲大学"}), 1),
+        (json!({"major":"无此专业"}), 0),
+    ] {
+        let response = library::list(
+            State(f.state.clone()),
+            axum::extract::Query(serde_json::from_value(filter).unwrap()),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(response["total"], total);
+    }
+    let page = library::list(
+        State(f.state.clone()),
+        axum::extract::Query(serde_json::from_value(json!({"pageSize":1,"page":99})).unwrap()),
+    )
+    .await
+    .unwrap()
+    .0;
+    assert_eq!(page["page"], 2);
+    assert_eq!(page["items"][0]["id"], bid);
+    assert_eq!(page["items"][0]["stock"], 0);
+    assert_eq!(page["items"][0]["physicalReady"], true);
+    assert_ne!(other, bid);
+}
+
+#[tokio::test]
+async fn catalog_candidate_identifier_migration_preserves_confirmed_citation() {
+    let f = Fixture::new();
+    let bid = f.book("数学分析");
+    let old = catalog();
+    let _ = catalog::import(State(f.state.clone()), Json(old.clone()))
+        .await
+        .unwrap();
+    let rid = catalog::flatten(&old).unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let _ = catalog::confirm(
+        State(f.state.clone()),
+        Path(rid.clone()),
+        Json(json!({"bookId":bid,"editionChecked":true})),
+    )
+    .await
+    .unwrap();
+    let mut next = old;
+    next["requirements"][0]["id"] = json!("new-edition-key");
+    next["books"][0]["edition"] = json!("第2版");
+    let result = catalog::import(State(f.state.clone()), Json(next))
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(result["added"], 0);
+    assert_eq!(result["unchanged"], 2);
+    let rows = catalog::list(State(f.state.clone())).await.unwrap().0;
+    let row = rows["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["id"] == rid)
+        .unwrap();
+    assert_eq!(row["bookId"], bid);
+    assert_eq!(row["state"], "confirmed");
+    assert_eq!(rows["records"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn jobs_validate_controls_evidence_and_recover_after_restart() {
+    let f = Fixture::new();
+    let bid = f.book("数学分析");
+    let job = jobs::create(
+        State(f.state.clone()),
+        Json(json!({"kind":"sources","bookIds":[bid,bid]})),
+    )
+    .await
+    .unwrap()
+    .0;
+    let id = job["id"].as_i64().unwrap();
+    assert_eq!(job["total"], 1);
+    let control = |action: &str| Path((id, action.to_string()));
+    assert!(jobs::control(
+        State(f.state.clone()),
+        control("complete-item"),
+        Json(json!({"bookId":bid}))
+    )
+    .await
+    .is_err());
+    let _ = jobs::control(State(f.state.clone()), control("pause"), Json(json!({})))
+        .await
+        .unwrap();
+    assert_eq!(
+        jobs::detail(State(f.state.clone()), Path(id))
+            .await
+            .unwrap()
+            .0["state"],
+        "paused"
+    );
+    let _ = jobs::control(State(f.state.clone()), control("resume"), Json(json!({})))
+        .await
+        .unwrap();
+    lock(&f.state)
+        .execute(
+            "UPDATE collection_jobs SET state='running' WHERE id=?",
+            [id],
+        )
+        .unwrap();
+    let recovered = AppState::new(f.path.clone(), 0).unwrap();
+    assert_eq!(
+        jobs::detail(State(recovered.clone()), Path(id))
+            .await
+            .unwrap()
+            .0["state"],
+        "queued"
+    );
+    lock(&f.state)
+        .execute(
+            "UPDATE collection_jobs SET state='waiting' WHERE id=?",
+            [id],
+        )
+        .unwrap();
+    assert!(jobs::control(
+        State(f.state.clone()),
+        control("complete-item"),
+        Json(json!({"bookId":bid}))
+    )
+    .await
+    .is_err());
+    source(&f, bid, true, 15.0).await;
+    let done = jobs::control(
+        State(f.state.clone()),
+        control("complete-item"),
+        Json(json!({"bookId":bid})),
+    )
+    .await
+    .unwrap()
+    .0;
+    assert_eq!(done["state"], "completed");
+    assert_eq!(done["processed"], 1);
+    assert!(
+        jobs::control(State(f.state.clone()), control("retry"), Json(json!({})))
+            .await
+            .is_err()
+    );
+    drop(recovered);
 }

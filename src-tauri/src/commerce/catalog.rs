@@ -124,8 +124,40 @@ pub(super) async fn import(
     let records = flatten(&v)?;
     let mut c = lock(&s);
     let tx = c.transaction()?;
+    let schools = index(&v, "schools")?;
+    for program in v["programs"].as_array().unwrap() {
+        let school = lookup(&schools, text(program, "schoolId"))?;
+        let data = json!({"school":school["name"],"year":program["year"],"college":program["college"],"major":program["majorName"],"majorCode":program["majorCode"]});
+        let identity = format!("sp_{:x}", md5::compute(data.to_string()));
+        tx.execute("INSERT INTO school_programs(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",params![identity,data.to_string()])?;
+    }
     let mut counts = [0, 0, 0];
-    for r in records {
+    for mut r in records {
+        // Old collectors grouped editions into one candidate. Preserve the confirmed
+        // citation ID when only that candidate identifier changed; raw evidence must match.
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM school_requirements WHERE id=?)",
+            [text(&r, "id")],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            let old_rows = rows(
+                &tx,
+                "SELECT data FROM school_requirements WHERE school=? AND year=? AND major=?",
+                params![text(&r, "school"), r["year"].as_i64(), text(&r, "major")],
+            )?;
+            let matches: Vec<_> = old_rows
+                .iter()
+                .filter(|old| {
+                    let mut candidate = r.clone();
+                    candidate["id"] = old["id"].clone();
+                    same_citation(old, &candidate)
+                })
+                .collect();
+            if matches.len() == 1 {
+                r["id"] = matches[0]["id"].clone();
+            }
+        }
         let id = text(&r, "id");
         let old: Option<String> = tx
             .query_row(
@@ -193,7 +225,7 @@ pub(super) async fn list(State(s): State<AppState>) -> Result<Json<Value>, ApiEr
         }
     }
     Ok(Json(
-        json!({"records":records,"schools":schools.values().collect::<Vec<_>>()}),
+        json!({"records":records,"programs":rows(&c,"SELECT data FROM school_programs ORDER BY id",[])?,"schools":schools.values().collect::<Vec<_>>()}),
     ))
 }
 pub(super) async fn confirm(
@@ -254,7 +286,7 @@ pub(super) async fn confirm(
         "requirement",
         &id,
         "confirmed",
-        &json!({"bookId":bid,"raw":r["raw"]}),
+        &json!({"bookId":bid,"raw":r["raw"],"lookupEvidence":v["lookupEvidence"]}),
     )?;
     tx.commit()?;
     Ok(Json(json!({"bookId":bid})))

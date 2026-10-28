@@ -80,6 +80,8 @@ pub(super) fn enrich(state: &AppState, key: &str, order: &mut Value) -> Result<(
     } else {
         "unmatched"
     });
+    let fulfillment: Option<String> = conn.query_row("SELECT json_object('id',f.id,'state',f.state,'kind',f.kind,'purchaseState',(SELECT p.state FROM purchase_attempts p WHERE p.fulfillment_id=f.id AND p.state NOT IN ('canceled','replaced') ORDER BY p.id DESC LIMIT 1)) FROM fulfillment_orders f WHERE f.app_key=? AND f.order_no=?",params![key,order_no],|r|r.get(0)).optional()?;
+    order["fulfillment"] = fulfillment.map(|raw|serde_json::from_str::<Value>(&raw).unwrap_or(Value::Null)).unwrap_or(Value::Null);
     Ok(())
 }
 
@@ -166,4 +168,26 @@ pub(super) async fn book_orders(
     let mut data = json!(list);
     browser_ids(&mut data);
     Ok(Json(data))
+}
+
+// Keep channel availability independent from physical stock. Ambiguous mappings stay unlinked.
+pub(super) fn enrich_product(
+    state: &AppState,
+    key: &str,
+    product: &mut Value,
+) -> Result<(), ApiError> {
+    let c = lock(state);
+    let pid = id(&product["product_id"]);
+    let mut stmt=c.prepare("SELECT book_id FROM channel_products WHERE app_key=?1 AND product_id=?2 AND product_id<>'' UNION SELECT book_id FROM xianyu_tasks WHERE app_key=?1 AND product_id=?2 AND product_id<>'' AND book_id IS NOT NULL")?;
+    let ids = stmt
+        .query_map(params![key, pid], |r| r.get::<_, i64>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    product["localBook"] = if ids.len() == 1 {
+        db::get_book(&c, ids[0])?
+            .map(|b| json!({"id":b.id,"title":b.title,"stock":b.stock}))
+            .unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    Ok(())
 }

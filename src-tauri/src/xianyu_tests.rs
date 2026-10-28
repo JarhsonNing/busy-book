@@ -810,6 +810,33 @@ async fn commerce_mixed_and_existing_product_block_before_any_upload() {
     assert!(f.mock.requests.lock().unwrap().is_empty());
 }
 #[tokio::test]
+async fn manual_and_taobao_shipping_only_send_logistics_and_never_procurement_to_the_platform() {
+    for taobao in [false,true] {
+        let f=fixture("commerce-physical").await;
+        let (base,server)=commerce_http(&f).await;
+        let (status,r)=commerce_post(&f,&base,"/sync-orders",json!({})).await;assert!(status.is_success(),"{r}");
+        f.mock.requests.lock().unwrap().clear();
+        let endpoint=if taobao {"/fulfillments/1/purchase"} else {"/fulfillments/1/tracking"};
+        let payload=json!({"platform":"taobao","purchaseNo":"TB-PRIVATE-8877","actualCost":7.77,"shop":"PRIVATE-SUPPLIER","note":"PRIVATE-INTERNAL-NOTE","state":"shipped","trackingNo":"SF123456","expressCode":"SF","expressName":"顺丰","confirmed":true,"physicalConfirmed":true});
+        let (status,r)=commerce_post(&f,&base,endpoint,payload).await;assert!(status.is_success(),"{r}");
+        assert!(f.mock.requests.lock().unwrap().is_empty(),"saving an internal link must never call the platform");
+        let (status,_)=commerce_post(&f,&base,"/fulfillments/1/ship",json!({})).await;assert!(!status.is_success());
+        assert!(f.mock.requests.lock().unwrap().is_empty());
+        let (status,r)=commerce_post(&f,&base,"/fulfillments/1/ship",json!({"confirmed":true,"purchaseNo":"TB-PRIVATE-8877","note":"PRIVATE-INTERNAL-NOTE"})).await;assert!(status.is_success(),"{r}");
+        {
+            let sent=f.mock.requests.lock().unwrap();
+            let body=&sent.iter().find(|(path,_)|path=="/api/open/order/ship").unwrap().1;
+            assert_eq!(body.as_object().unwrap().len(),4);
+            assert_eq!(body["waybill_no"],"SF123456");assert_eq!(body["express_code"],"SF");
+            for (_,body) in sent.iter() { let text=body.to_string();assert!(!text.contains("PRIVATE"));assert!(!text.contains("7.77")); }
+        }
+        let (_,r)=commerce_post(&f,&base,"/fulfillments/1/refresh",json!({})).await;
+        assert_eq!(r["order"]["fulfillment"]["state"],"shipped");
+        server.abort();
+    }
+}
+
+#[tokio::test]
 async fn commerce_physical_http_flow_and_shipping_timeout_do_not_duplicate_send() {
     for mode in ["commerce-physical", "commerce-timeout"] {
         let f = fixture(mode).await;
@@ -821,7 +848,7 @@ async fn commerce_physical_http_flow_and_shipping_timeout_do_not_duplicate_send(
         assert_eq!(status, reqwest::StatusCode::OK, "{source}");
         let(status,r)=commerce_post(&f,&base,"/fulfillments/1/purchase",json!({"sourceId":source["id"],"state":"shipped","purchaseNo":"tb001","actualCost":10,"trackingNo":"SF123456","expressCode":"SF","expressName":"顺丰","confirmed":true})).await;
         assert_eq!(status, reqwest::StatusCode::OK, "{r}");
-        let (status, _) = commerce_post(&f, &base, "/fulfillments/1/ship", json!({})).await;
+        let (status, _) = commerce_post(&f, &base, "/fulfillments/1/ship", json!({"confirmed":true})).await;
         assert_eq!(status.is_success(), mode == "commerce-physical");
         if mode == "commerce-timeout" {
             let(status,_)=commerce_post(&f,&base,"/fulfillments/1/purchase",json!({"sourceId":source["id"],"state":"shipped","purchaseNo":"tb001","actualCost":10,"trackingNo":"SF123456","expressCode":"SF","expressName":"顺丰","confirmed":true})).await;
@@ -831,7 +858,7 @@ async fn commerce_physical_http_flow_and_shipping_timeout_do_not_duplicate_send(
             );
         }
 
-        let (status, r) = commerce_post(&f, &base, "/fulfillments/1/ship", json!({})).await;
+        let (status, r) = commerce_post(&f, &base, "/fulfillments/1/ship", json!({"confirmed":true})).await;
         if mode == "commerce-physical" {
             assert!(status.is_success());
             assert_eq!(r["status"], "already_shipped")

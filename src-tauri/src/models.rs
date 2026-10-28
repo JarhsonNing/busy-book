@@ -108,6 +108,7 @@ pub struct BookDetail {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureInput {
+    pub source_book_id: Option<i64>,
     #[serde(default)]
     pub as_source: bool,
     pub item_id: Option<String>,

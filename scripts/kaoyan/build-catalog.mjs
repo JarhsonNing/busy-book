@@ -1,3 +1,4 @@
+import './lib/lifecycle.mjs';
 // Usage: node scripts/kaoyan/build-catalog.mjs [--input data/kaoyan/books] [--out data/kaoyan/catalog]
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -203,7 +204,7 @@ async function main() {
           const edition = normalizeEdition(book.edition);
           const yearValue = normalizeYear(book.year);
           const volume = text(book.volume) || null;
-          const bookKey = `${title}|${publisher ?? authors ?? ''}`;
+          const bookKey = `${title}|${authors ?? ''}|${publisher ?? ''}|${edition ?? ''}|${yearValue ?? ''}|${volume ?? ''}`;
           const bookId = hash(bookKey, 'bk_');
 
           if (!books.has(bookId)) {

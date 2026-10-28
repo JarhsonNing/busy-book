@@ -1,6 +1,12 @@
 //! Book-centered operations. Platform identifiers are stored as text, snapshots never contain credentials.
 mod catalog;
+mod catalog_browser;
+mod catalog_collect;
 mod fulfillment;
+pub mod jobs;
+mod library;
+mod book_search;
+mod price_search;
 pub mod schema;
 #[cfg(test)]
 mod tests;
@@ -21,8 +27,14 @@ use serde_json::{json, Value};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/commerce/overview", get(overview))
+        .route("/api/commerce/library", get(library::list))
+        .route("/api/commerce/catalog/sync", post(library::sync_catalog))
+        .route("/api/commerce/jobs", get(jobs::list).post(jobs::create))
+        .route("/api/commerce/jobs/{id}", get(jobs::detail))
+        .route("/api/commerce/jobs/{id}/{action}", post(jobs::control))
         .route("/api/commerce/books", get(books))
         .route("/api/commerce/books/{id}", get(book_detail))
+        .route("/api/commerce/books/{id}/price-search", get(price_search::status).post(price_search::control))
         .route("/api/commerce/books/{id}/profile", post(save_profile))
         .route("/api/commerce/sources", get(sources).post(save_source))
         .route("/api/commerce/books/{id}/resources", post(add_resource))
@@ -31,13 +43,42 @@ pub fn router() -> Router<AppState> {
         .route("/api/commerce/channels/{id}/check", get(channel_check))
         .route("/api/commerce/catalog/preview", post(catalog::preview))
         .route("/api/commerce/catalog/import", post(catalog::import))
+        .route("/api/commerce/catalog/status", get(catalog_browser::status))
+        .route(
+            "/api/commerce/catalog/path",
+            post(catalog_browser::set_path),
+        )
+        .route("/api/commerce/catalog/tree", get(catalog_browser::tree))
+        .route("/api/commerce/catalog/books", get(catalog_browser::books))
+        .route(
+            "/api/commerce/catalog/major/{programId}/books",
+            get(catalog_browser::major_books),
+        )
+        .route(
+            "/api/commerce/catalog/book/{id}/usage",
+            get(catalog_browser::book_usage),
+        )
+        .route(
+            "/api/commerce/catalog/adapters",
+            get(catalog_collect::adapters).post(catalog_collect::save_adapter),
+        )
+        .route(
+            "/api/commerce/catalog/delete-adapter",
+            post(catalog_collect::delete_adapter),
+        )
+        .route(
+            "/api/commerce/catalog/collect",
+            post(catalog_collect::collect),
+        )
         .route("/api/commerce/requirements", get(catalog::list))
+        .route("/api/commerce/requirements/{id}/search", get(book_search::status).post(book_search::update))
         .route(
             "/api/commerce/requirements/{id}/confirm",
             post(catalog::confirm),
         )
         .route("/api/commerce/fulfillments", get(fulfillment::list))
         .route("/api/commerce/fulfillments/{id}", get(fulfillment::detail))
+        .route("/api/commerce/fulfillments/{id}/tracking", post(fulfillment::tracking))
         .route(
             "/api/commerce/fulfillments/{id}/purchase",
             post(fulfillment::purchase),
@@ -286,6 +327,17 @@ pub fn capture_candidate(
         "INSERT OR IGNORE INTO book_sources(capture_id,data,updated_at) VALUES(?,?,?)",
         params![capture.id, data.to_string(), db::now()],
     )?;
+    Ok(())
+}
+pub fn attach_capture_candidate(conn: &Connection, capture: &crate::models::Capture, book_id: i64) -> rusqlite::Result<()> {
+    // A listing may contain several editions. Never move a reviewed source to another book.
+    let existing: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM book_sources WHERE book_id=? AND (capture_id=? OR json_extract(data,'$.originCaptureId')=?))",
+        params![book_id,capture.id,capture.id],|r|r.get(0))?;
+    if existing { return Ok(()); }
+    if conn.execute("UPDATE book_sources SET book_id=? WHERE capture_id=? AND book_id IS NULL",params![book_id,capture.id])? == 0 {
+        let data = json!({"url":capture.url,"title":capture.title,"shop":capture.shop,"price":capture.price,"freight":null,"sku":"","condition":"","status":"pending","dropship":false,"checkedAt":"","origin":"capture","originCaptureId":capture.id});
+        conn.execute("INSERT INTO book_sources(book_id,data,updated_at) VALUES(?,?,?)",params![book_id,data.to_string(),db::now()])?;
+    }
     Ok(())
 }
 async fn add_resource(

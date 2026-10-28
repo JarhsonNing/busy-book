@@ -8,7 +8,7 @@ pub fn backup(conn: &Connection, directory: &Path) -> anyhow::Result<()> {
         |r| r.get(0),
     )?;
     let migrated: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='commerce_meta')",
+        "SELECT COUNT(*)=3 FROM sqlite_master WHERE name IN ('collection_jobs','commerce_meta','price_searches')",
         [],
         |r| r.get(0),
     )?;
@@ -25,7 +25,13 @@ pub fn backup(conn: &Connection, directory: &Path) -> anyhow::Result<()> {
 pub fn init(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("SAVEPOINT commerce_migration;
         CREATE TABLE IF NOT EXISTS commerce_meta(version INTEGER PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS collection_jobs(id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL,
+            state TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '', request TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '', processed INTEGER NOT NULL DEFAULT 0, total INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_jobs_state ON collection_jobs(state,id);
+        CREATE TABLE IF NOT EXISTS school_programs(id TEXT PRIMARY KEY, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS book_profiles(book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE, data TEXT NOT NULL DEFAULT '{}');
+        CREATE TABLE IF NOT EXISTS price_searches(book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS school_requirements(id TEXT PRIMARY KEY, book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
             school TEXT NOT NULL, year INTEGER NOT NULL, major TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', data TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_requirements_book ON school_requirements(book_id);

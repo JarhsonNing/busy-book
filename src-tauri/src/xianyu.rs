@@ -21,7 +21,7 @@ pub struct Gateway {
     client: reqwest::Client,
     base: String,
     next_request: Mutex<tokio::time::Instant>,
-    operation: Mutex<()>,
+    pub(crate) operation: Mutex<()>,
 }
 
 #[derive(Debug)]
@@ -464,6 +464,15 @@ async fn dispatch(
     } else if op == "order" {
         orders::enrich(&state, &cfg.app_key, &mut data)?;
         orders::inventory(&state, &cfg, &mut data).await;
+    }
+    if op == "products" {
+        if let Some(list) = data.get_mut("list").and_then(Value::as_array_mut) {
+            for product in list {
+                orders::enrich_product(&state, &cfg.app_key, product)?;
+            }
+        }
+    } else if op == "product" {
+        orders::enrich_product(&state, &cfg.app_key, &mut data)?;
     }
     browser_ids(&mut data);
     Ok(Json(data))

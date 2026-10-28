@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, useSlots, useAttrs, watch } from 'vue';
+import { computed, nextTick, ref, useSlots, useAttrs, watch } from 'vue';
 import {
   PopoverRoot,
   PopoverTrigger,
@@ -26,6 +26,7 @@ const emit = defineEmits(['update:modelValue', 'change']);
 const slots = useSlots(),
   attrs = useAttrs(),
   open = ref(false),
+  trigger = ref(null),
   query = ref('');
 const options = computed(() => collectOptions(slots.default?.()));
 const currentValue = computed(() =>
@@ -48,6 +49,11 @@ const selectedKey = computed(() =>
 watch(open, () => {
   query.value = '';
 });
+async function closeForTab() {
+  open.value = false;
+  await nextTick();
+  trigger.value?.focus();
+}
 function choose(key) {
   const option = options.value[Number(key)];
   if (!option || option.disabled) return;
@@ -60,6 +66,7 @@ function choose(key) {
   <PopoverRoot v-model:open="open">
     <PopoverTrigger as-child>
       <button
+        ref="trigger"
         v-bind="attrs"
         type="button"
         class="search-select input"
@@ -86,7 +93,7 @@ function choose(key) {
       @invalid.prevent="open = true"
     />
     <PopoverPortal>
-      <PopoverContent class="select-popover" align="start" :side-offset="5" :collision-padding="12">
+      <PopoverContent @keydown.tab.prevent="closeForTab" class="select-popover" align="start" :side-offset="5" :collision-padding="12">
         <ComboboxRoot
           :model-value="selectedKey"
           :open="true"

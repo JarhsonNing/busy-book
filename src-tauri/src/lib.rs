@@ -1,8 +1,8 @@
 pub mod api;
 pub mod commerce;
 pub mod db;
-pub mod images;
 pub mod gitee;
+pub mod images;
 pub mod listing;
 pub mod models;
 pub mod regions;
@@ -118,6 +118,7 @@ async fn open_browser(
     if let Some(window) = app.get_webview_window(label) {
         let parsed = tauri::Url::parse(&target).map_err(|error| error.to_string())?;
         window.navigate(parsed).map_err(|error| error.to_string())?;
+        window.show().map_err(|error| error.to_string())?;
         let _ = window.unminimize();
         let _ = window.set_focus();
         return Ok(label.to_string());
@@ -136,19 +137,39 @@ async fn open_browser(
     );
 
     let parsed = tauri::Url::parse(&target).map_err(|error| error.to_string())?;
+    // Match Tauri's existing Windows default so upgrades retain the current cookie store.
+    let browser_data = app.path().app_local_data_dir().map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&browser_data).map_err(|error| error.to_string())?;
     let builder = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(parsed))
         .title(title)
+        .data_directory(browser_data)
+        .incognito(false)
         .inner_size(1280.0, 880.0)
         .min_inner_size(900.0, 600.0)
         .initialization_script(init_script)
         .on_navigation(|url| matches!(url.scheme(), "http" | "https" | "about"));
-    builder.build().map_err(|error| error.to_string())?;
+    let window = builder.build().map_err(|error| error.to_string())?;
+    if matches!(kind.as_str(), "taobao" | "kongfz") {
+        let retained = window.clone();
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Keep session cookies alive while the application is running.
+                if retained.hide().is_ok() { api.prevent_close(); }
+            }
+        });
+    }
 
     Ok(label.to_string())
 }
 
 pub fn run() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                // Hidden platform windows must not keep the application running after Quit.
+                window.app_handle().exit(0);
+            }
+        })
         .setup(|app| {
             let data_dir = app
                 .path()
@@ -158,6 +179,12 @@ pub fn run() {
                 .ok()
                 .and_then(|value| value.parse::<u16>().ok())
                 .unwrap_or(8899);
+            if let Ok(resources) = app.path().resource_dir() {
+                let runtime = resources.join("collector");
+                if runtime.join("node.exe").exists() {
+                    std::env::set_var("TAOSHU_COLLECTOR", runtime);
+                }
+            }
             let state = state::AppState::new(data_dir, port)?;
             app.manage(state.clone());
             tauri::async_runtime::spawn(async move {

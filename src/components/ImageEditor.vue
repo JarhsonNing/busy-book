@@ -1,17 +1,25 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { assetUrl } from '../api';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
+import { assetUrl } from "../api";
 
 const props = defineProps({
   image: { type: Object, required: true },
 });
-const emit = defineEmits(['close', 'saved']);
+const emit = defineEmits(["close", "saved"]);
 
 const canvasRef = ref(null);
 const loading = ref(true);
 const busy = ref(false);
-const status = ref('');
-const tool = ref('brush');
+const status = ref("");
+const tool = ref("brush");
 const brushSize = ref(44);
 const showMask = ref(true);
 const band = ref(38);
@@ -34,29 +42,35 @@ let lastPoint = null;
 const cropRect = computed(() => {
   const x = Math.round((width * crop.left) / 100);
   const y = Math.round((height * crop.top) / 100);
-  const w = Math.max(8, Math.round((width * (100 - crop.left - crop.right)) / 100));
-  const h = Math.max(8, Math.round((height * (100 - crop.top - crop.bottom)) / 100));
+  const w = Math.max(
+    8,
+    Math.round((width * (100 - crop.left - crop.right)) / 100),
+  );
+  const h = Math.max(
+    8,
+    Math.round((height * (100 - crop.top - crop.bottom)) / 100),
+  );
   return { x, y, w: Math.min(w, width - x), h: Math.min(h, height - y) };
 });
 
 onMounted(load);
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKey);
+  window.removeEventListener("keydown", onKey);
 });
 
 function onKey(event) {
-  if (event.key === 'Escape') emit('close');
+  if (event.key === "Escape") emit("close");
 }
 
 async function load() {
-  window.addEventListener('keydown', onKey);
+  window.addEventListener("keydown", onKey);
   const image = new Image();
-  image.crossOrigin = 'anonymous';
+  image.crossOrigin = "anonymous";
   const source = props.image.processedUrl || props.image.url;
   try {
     await new Promise((resolve, reject) => {
       image.onload = resolve;
-      image.onerror = () => reject(new Error('图片加载失败'));
+      image.onerror = () => reject(new Error("图片加载失败"));
       image.src = assetUrl(source);
     });
   } catch (error) {
@@ -66,20 +80,23 @@ async function load() {
   }
 
   const max = 1400;
-  const scale = Math.min(1, max / Math.max(image.naturalWidth, image.naturalHeight));
+  const scale = Math.min(
+    1,
+    max / Math.max(image.naturalWidth, image.naturalHeight),
+  );
   width = Math.max(1, Math.round(image.naturalWidth * scale));
   height = Math.max(1, Math.round(image.naturalHeight * scale));
 
-  work = document.createElement('canvas');
+  work = document.createElement("canvas");
   work.width = width;
   work.height = height;
-  workCtx = work.getContext('2d', { willReadFrequently: true });
+  workCtx = work.getContext("2d", { willReadFrequently: true });
   workCtx.drawImage(image, 0, 0, width, height);
 
-  maskCanvas = document.createElement('canvas');
+  maskCanvas = document.createElement("canvas");
   maskCanvas.width = width;
   maskCanvas.height = height;
-  maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+  maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true });
   mask = new Uint8Array(width * height);
 
   const canvas = canvasRef.value;
@@ -92,7 +109,7 @@ async function load() {
 }
 
 function context() {
-  return canvasRef.value.getContext('2d');
+  return canvasRef.value.getContext("2d");
 }
 
 function draw() {
@@ -104,12 +121,12 @@ function draw() {
 
   const rect = cropRect.value;
   ctx.save();
-  ctx.fillStyle = 'rgba(26, 20, 14, 0.52)';
+  ctx.fillStyle = "rgba(26, 20, 14, 0.52)";
   ctx.fillRect(0, 0, width, rect.y);
   ctx.fillRect(0, rect.y + rect.h, width, height - (rect.y + rect.h));
   ctx.fillRect(0, rect.y, rect.x, rect.h);
   ctx.fillRect(rect.x + rect.w, rect.y, width - (rect.x + rect.w), rect.h);
-  ctx.strokeStyle = '#f3b562';
+  ctx.strokeStyle = "#f3b562";
   ctx.lineWidth = Math.max(2, width / 480);
   ctx.setLineDash([14, 9]);
   ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
@@ -145,7 +162,10 @@ function pointerMove(event) {
   const steps = Math.max(1, Math.ceil(distance / step));
   for (let index = 0; index <= steps; index += 1) {
     const ratio = index / steps;
-    stamp(from.x + (point.x - from.x) * ratio, from.y + (point.y - from.y) * ratio);
+    stamp(
+      from.x + (point.x - from.x) * ratio,
+      from.y + (point.y - from.y) * ratio,
+    );
   }
   lastPoint = point;
   draw();
@@ -160,12 +180,14 @@ function pointerUp() {
 
 function stamp(x, y) {
   const radius = brushSize.value / 2;
-  const erasing = tool.value === 'erase';
-  maskCtx.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
+  const erasing = tool.value === "erase";
+  maskCtx.globalCompositeOperation = erasing
+    ? "destination-out"
+    : "source-over";
   if (erasing) {
-    maskCtx.fillStyle = 'rgba(0,0,0,1)';
+    maskCtx.fillStyle = "rgba(0,0,0,1)";
   } else {
-    maskCtx.fillStyle = 'rgba(233, 84, 61, 0.62)';
+    maskCtx.fillStyle = "rgba(233, 84, 61, 0.62)";
   }
   maskCtx.beginPath();
   maskCtx.arc(x, y, radius, 0, Math.PI * 2);
@@ -234,23 +256,23 @@ function rebuildMaskCanvas() {
     data[offset + 2] = 61;
     data[offset + 3] = 158;
   }
-  maskCtx.globalCompositeOperation = 'source-over';
+  maskCtx.globalCompositeOperation = "source-over";
   maskCtx.putImageData(imageData, 0, 0);
 }
 
 async function detect() {
   if (loading.value || busy.value) return;
   busy.value = true;
-  status.value = '正在识别半透明水印…';
+  status.value = "正在识别半透明水印…";
   await new Promise((resolve) => setTimeout(resolve, 40));
   try {
     pushHistory();
     const startY = Math.floor(height * (1 - band.value / 100));
-    const blurred = document.createElement('canvas');
+    const blurred = document.createElement("canvas");
     blurred.width = width;
     blurred.height = height;
-    const blurredCtx = blurred.getContext('2d', { willReadFrequently: true });
-    blurredCtx.filter = 'blur(9px)';
+    const blurredCtx = blurred.getContext("2d", { willReadFrequently: true });
+    blurredCtx.filter = "blur(9px)";
     blurredCtx.drawImage(work, 0, 0);
 
     const source = workCtx.getImageData(0, 0, width, height).data;
@@ -265,9 +287,16 @@ async function detect() {
         const g = source[offset + 1];
         const b = source[offset + 2];
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        const background = 0.299 * soft[offset] + 0.587 * soft[offset + 1] + 0.114 * soft[offset + 2];
+        const background =
+          0.299 * soft[offset] +
+          0.587 * soft[offset + 1] +
+          0.114 * soft[offset + 2];
         const saturation = Math.max(r, g, b) - Math.min(r, g, b);
-        if (gray - background > threshold.value && gray > 92 && saturation < 72) {
+        if (
+          gray - background > threshold.value &&
+          gray > 92 &&
+          saturation < 72
+        ) {
           detected[index] = 1;
         }
       }
@@ -297,7 +326,7 @@ async function detect() {
     countMask();
     status.value = maskCount.value
       ? `已标记 ${maskCount.value} 个像素，可继续用画笔补涂`
-      : '没有识别到明显水印，可手动涂抹';
+      : "没有识别到明显水印，可手动涂抹";
   } finally {
     busy.value = false;
   }
@@ -306,7 +335,7 @@ async function detect() {
 async function save() {
   if (busy.value) return;
   busy.value = true;
-  status.value = '正在修补并导出…';
+  status.value = "正在修补并导出…";
   await new Promise((resolve) => setTimeout(resolve, 40));
   try {
     const imageData = workCtx.getImageData(0, 0, width, height);
@@ -314,32 +343,44 @@ async function save() {
       inpaint(imageData.data, width, height, mask);
     }
 
-    const temp = document.createElement('canvas');
+    const temp = document.createElement("canvas");
     temp.width = width;
     temp.height = height;
-    temp.getContext('2d').putImageData(imageData, 0, 0);
+    temp.getContext("2d").putImageData(imageData, 0, 0);
 
     const rect = cropRect.value;
     const scale = Math.min(1, 1200 / Math.max(rect.w, rect.h));
     const outputWidth = Math.max(1, Math.round(rect.w * scale));
     const outputHeight = Math.max(1, Math.round(rect.h * scale));
 
-    const output = document.createElement('canvas');
+    const output = document.createElement("canvas");
     output.width = outputWidth;
     output.height = outputHeight;
-    const outputCtx = output.getContext('2d', { willReadFrequently: true });
+    const outputCtx = output.getContext("2d", { willReadFrequently: true });
     outputCtx.imageSmoothingEnabled = true;
-    outputCtx.imageSmoothingQuality = 'high';
-    outputCtx.drawImage(temp, rect.x, rect.y, rect.w, rect.h, 0, 0, outputWidth, outputHeight);
+    outputCtx.imageSmoothingQuality = "high";
+    outputCtx.drawImage(
+      temp,
+      rect.x,
+      rect.y,
+      rect.w,
+      rect.h,
+      0,
+      0,
+      outputWidth,
+      outputHeight,
+    );
 
     if (enhance.value) applyEnhance(outputCtx, outputWidth, outputHeight);
 
-    const blob = await new Promise((resolve) => output.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('生成图片失败');
-    status.value = '已完成';
-    emit('saved', blob);
+    const blob = await new Promise((resolve) =>
+      output.toBlob(resolve, "image/png"),
+    );
+    if (!blob) throw new Error("生成图片失败");
+    status.value = "已完成";
+    emit("saved", blob);
   } catch (error) {
-    status.value = error.message || '处理失败';
+    status.value = error.message || "处理失败";
   } finally {
     busy.value = false;
   }
@@ -354,7 +395,8 @@ function inpaint(data, w, h, marked) {
   if (!masked.length) return;
 
   const known = new Uint8Array(size);
-  for (let index = 0; index < size; index += 1) known[index] = marked[index] ? 0 : 1;
+  for (let index = 0; index < size; index += 1)
+    known[index] = marked[index] ? 0 : 1;
 
   const queue = new Int32Array(size);
   let head = 0;
@@ -467,27 +509,44 @@ function applyEnhance(ctx, w, h) {
   ctx.putImageData(imageData, 0, 0);
 }
 
-watch([() => crop.top, () => crop.bottom, () => crop.left, () => crop.right], () => {
-  const clamp = (value) => Math.max(0, Math.min(45, Number(value) || 0));
-  if (crop.left + crop.right > 88) crop.right = 88 - crop.left;
-  if (crop.top + crop.bottom > 88) crop.bottom = 88 - crop.top;
-  crop.left = clamp(crop.left);
-  crop.top = clamp(crop.top);
-  draw();
-});
+watch(
+  [() => crop.top, () => crop.bottom, () => crop.left, () => crop.right],
+  () => {
+    const clamp = (value) => Math.max(0, Math.min(45, Number(value) || 0));
+    if (crop.left + crop.right > 88) crop.right = 88 - crop.left;
+    if (crop.top + crop.bottom > 88) crop.bottom = 88 - crop.top;
+    crop.left = clamp(crop.left);
+    crop.top = clamp(crop.top);
+    draw();
+  },
+);
 
 watch(showMask, draw);
 </script>
 
 <template>
   <div class="modal-backdrop editor-backdrop" @click.self="$emit('close')">
-    <div class="editor">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片编辑"
+      class="editor"
+      v-modal-focus="
+        () => {
+          emit('close');
+        }
+      "
+    >
       <header class="modal-head">
         <div>
-          <h2>图片净化</h2>
-          <p>涂抹水印文字 → 修补 → 裁剪导出，发布时自动使用处理后的图</p>
+          <h2>图片编辑</h2>
         </div>
-        <UiButton class="icon-btn" @click="$emit('close')">×</UiButton>
+        <UiButton
+          class="icon-btn"
+          aria-label="关闭图片编辑"
+          @click="$emit('close')"
+          >×</UiButton
+        >
       </header>
 
       <div class="editor-body">
@@ -501,13 +560,28 @@ watch(showMask, draw);
             @pointercancel="pointerUp"
           />
           <div class="canvas-tools">
-            <UiButton :class="['tool-btn', { active: tool === 'brush' }]" @click="tool = 'brush'">画笔</UiButton>
-            <UiButton :class="['tool-btn', { active: tool === 'erase' }]" @click="tool = 'erase'">橡皮</UiButton>
-            <UiButton class="tool-btn" :disabled="!history.length" @click="undo">撤销</UiButton>
+            <UiButton
+              :class="['tool-btn', { active: tool === 'brush' }]"
+              @click="tool = 'brush'"
+              >画笔</UiButton
+            >
+            <UiButton
+              :class="['tool-btn', { active: tool === 'erase' }]"
+              @click="tool = 'erase'"
+              >橡皮</UiButton
+            >
+            <UiButton class="tool-btn" :disabled="!history.length" @click="undo"
+              >撤销</UiButton
+            >
             <UiButton class="tool-btn" @click="resetAll">重置</UiButton>
             <label class="brush-size">
               笔刷
-              <input v-model.number="brushSize" type="range" min="8" max="140" />
+              <input
+                v-model.number="brushSize"
+                type="range"
+                min="8"
+                max="140"
+              />
             </label>
             <label class="brush-size">
               <input v-model="showMask" type="checkbox" />
@@ -528,8 +602,12 @@ watch(showMask, draw);
               <span>识别强度 {{ threshold }}</span>
               <input v-model.number="threshold" type="range" min="6" max="40" />
             </label>
-            <UiButton class="btn small" :disabled="loading || busy" @click="detect">识别并标记</UiButton>
-            <p class="hint">识别半透明浅色文字，跑完可再用画笔补涂或橡皮擦掉误标。</p>
+            <UiButton
+              class="btn small"
+              :disabled="loading || busy"
+              @click="detect"
+              >识别并标记</UiButton
+            >
           </section>
 
           <section>
@@ -540,7 +618,12 @@ watch(showMask, draw);
             </label>
             <label class="field">
               <span>下 {{ crop.bottom }}%</span>
-              <input v-model.number="crop.bottom" type="range" min="0" max="40" />
+              <input
+                v-model.number="crop.bottom"
+                type="range"
+                min="0"
+                max="40"
+              />
             </label>
             <label class="field">
               <span>左 {{ crop.left }}%</span>
@@ -548,7 +631,12 @@ watch(showMask, draw);
             </label>
             <label class="field">
               <span>右 {{ crop.right }}%</span>
-              <input v-model.number="crop.right" type="range" min="0" max="40" />
+              <input
+                v-model.number="crop.right"
+                type="range"
+                min="0"
+                max="40"
+              />
             </label>
           </section>
 
@@ -559,16 +647,19 @@ watch(showMask, draw);
               <span class="switch-track"></span>
               <span class="switch-text">白底增强 / 轻微提亮</span>
             </label>
-            <p class="hint">输出最长边 1200px 的 PNG，自动替换原图用于发布。</p>
+            <small>PNG · 最长边 1200px</small>
           </section>
 
-          <p class="status-line">{{ status }}</p>
-          <UiButton class="btn accent block" :disabled="busy || loading" @click="save">
-            {{ busy ? '处理中…' : '保存处理结果' }}
-          </UiButton>
-          <p class="hint tiny-note">
-            仅处理自己拥有使用权的图片。使用第三方平台图片前请确认授权。
-          </p>
+          <div class="editor-save">
+            <p v-if="status" class="status-line" role="status">{{ status }}</p>
+            <UiButton
+              class="btn accent block"
+              :disabled="busy || loading"
+              @click="save"
+            >
+              {{ busy ? "处理中…" : "保存图片" }}
+            </UiButton>
+          </div>
         </aside>
       </div>
     </div>

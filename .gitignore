@@ -8,3 +8,8 @@ data/
 *.log
 .DS_Store
 Thumbs.db
+
+/src-tauri/resources/collector/
+
+/.redesign-test-data/
+/.redesign-*.json

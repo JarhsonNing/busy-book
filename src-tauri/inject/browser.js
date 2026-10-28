@@ -29,6 +29,208 @@
 
   const SITE_LABEL = { taobao: '淘宝', kongfz: '孔夫子', goofish: '闲鱼', other: '网页' }[SITE];
 
+  const lookupParams = new URLSearchParams(location.search);
+  let sourceBookId = SITE === 'taobao' && /^\d+$/.test(lookupParams.get('taoshuSourceBook') || '')
+    ? Number(lookupParams.get('taoshuSourceBook')) : null;
+  let lowestRequest = lookupParams.get('taoshuPriceSearch') || '';
+  try {
+    if (HOST === 's.taobao.com') {
+      if (sourceBookId) sessionStorage.setItem('taoshu-source-search', JSON.stringify({bookId:sourceBookId,query:lookupParams.get('q'),createdAt:Date.now(),lowestRequest}));
+      else {
+        const previous = JSON.parse(sessionStorage.getItem('taoshu-source-search') || 'null');
+        if (previous && Date.now()-previous.createdAt < 1800000 && previous.query === lookupParams.get('q')) {
+          sourceBookId = previous.bookId;
+          if (lookupParams.get('sort') === 'price-asc') lowestRequest = previous.lowestRequest || '';
+        }
+      }
+    }
+  } catch { /* Keep the explicit URL context when storage is unavailable. */ }
+  const sourceSearch = !!sourceBookId && HOST === 's.taobao.com';
+  function extractTaobaoSearchCandidates(limit = 20) {
+    const items = new Map();
+    for (const a of document.querySelectorAll('a[href*="item.taobao.com"],a[href*="detail.tmall.com"]')) {
+      if (a.getClientRects && !a.getClientRects().length) continue;
+      let url;
+      try { url = new URL(a.href, location.href); } catch { continue; }
+      if (!['item.taobao.com', 'detail.tmall.com'].includes(url.hostname) || !['http:', 'https:'].includes(url.protocol)) continue;
+      const id = url.searchParams.get('id');
+      if (!/^\d+$/.test(id || '') || items.has(id)) continue;
+      const card = a.closest('[class*="doubleCardWrapper"],[class*="Card--"],.item,.m-item,li') || a;
+      const titleNode = card.querySelector('[class*="title"],.title');
+      const title = (titleNode?.textContent || a.getAttribute('title') || card.querySelector('img')?.alt || '').trim();
+      if (!title) continue;
+      const integer = card.querySelector('[class*="priceInt"]');
+      const fraction = card.querySelector('[class*="priceFloat"]');
+      const priceText = integer
+        ? integer.textContent.trim() + (fraction?.textContent.trim() || '')
+        : card.querySelector('[class*="innerPriceWrapper"],[class*="price"],.price')?.textContent || '';
+      const price = priceText.replace(/,/g, '').match(/(?:[¥￥]\s*|^\s*)(\d+(?:\.\d+)?)(?![\d.])/)?.[1];
+      const priceLabel = card.querySelector('[class*="priceDesc"]')?.textContent?.trim() || '';
+      const shop = (card.querySelector('[class*="shopNameText"]') || card.querySelector('[class*="shopName"],.shopname,.shop'))?.textContent?.trim() || '';
+      items.set(id, { asSource: true, sourceBookId, itemId: id,
+        url: `https://${url.hostname}/item.htm?id=${id}`, title, shop,
+        price: price ? Number(price) : null, priceLabel, images: [],
+        raw: { source: 'taobao-search', query: lookupParams.get('q') || '', priceLabel, capturedAt: new Date().toISOString() } });
+      if (items.size >= limit) break;
+    }
+    return [...items.values()];
+  }
+  function scrollTaobaoResults() {
+    let root = document.querySelector('[class*="scrollWrapper"]');
+    while (root && !(root.scrollHeight > root.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(root).overflowY))) root = root.parentElement;
+    root = root || document.scrollingElement || document.documentElement;
+    const height = root.clientHeight || window.innerHeight;
+    const atBottom = root.scrollTop + height >= root.scrollHeight - 4;
+    root.scrollTo({top:root.scrollTop + Math.max(1, height * 0.85),behavior:'instant'});
+    return atBottom;
+  }
+  function taobaoNextButton() {
+    // The supplied HTML also has a simple carousel pager; only use the main results pager.
+    return [...document.querySelectorAll('.next-pagination.next-normal button.next-next')]
+      .filter(el => el.getClientRects().length && !el.disabled && el.getAttribute('aria-disabled') !== 'true').pop();
+  }
+  async function collectTaobaoSearch() {
+    if (state.busy) return false;
+    const items = extractTaobaoSearchCandidates();
+    if (!items.length) return false;
+    setBusy(true);
+    let saved = 0;
+    try {
+      for (const item of items) {
+        await requestJson('/api/captures', { method: 'POST', body: item });
+        saved++;
+      }
+      toast(`已返回 ${saved} 条货源候选，请回到图书核对`, 'success');
+      return true;
+    } catch (e) {
+      toast(`已保存 ${saved} 条，${e.message}；可重试补全`, 'error');
+      return true;
+    } finally { setBusy(false); refreshSiteButton(); }
+  }
+  async function runLowestPrice(retry = false) {
+    if (state.busy) return;
+    setBusy(true);
+    const endpoint = '/api/commerce/books/' + sourceBookId + '/price-search';
+    openPanel('一键找最低价', '正在读取淘宝搜索结果…');
+    try {
+      let task = await requestJson(endpoint);
+      if (task.requestId !== lowestRequest) throw new Error('比价任务已更新，请从图书货源页重新打开');
+      if (['completed','canceled'].includes(task.state)) { toast('比价已结束，返回图书查看结果', 'info'); return; }
+      if (task.state === 'waiting') {
+        if (!retry) { toast(task.error || '请完成网站登录或验证后点击继续比价', 'info'); return; }
+        task = await requestJson(endpoint, {method:'POST',body:{action:'resume',requestId:lowestRequest}});
+      }
+      const known = new Set((task.items || []).map(i => i.url));
+      const pending = new Map();
+      let quiet = 0, awaitingNext = false, sawCards = false;
+      const active = value => value.requestId === lowestRequest && value.state === 'searching';
+      const flush = async () => {
+        if (!pending.size) return;
+        task = await requestJson(endpoint, {method:'POST',body:{action:'batch',requestId:lowestRequest,batch:(task.batchesDone ?? task.pagesDone) + 1,items:[...pending.values()]}});
+        pending.clear();
+        panelSub.textContent = `已采集 ${task.count} 个候选`;
+      };
+      for (let attempt = 0; attempt < 120; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        task = await requestJson(endpoint);
+        if (!active(task)) return;
+        const verification = [...document.querySelectorAll('iframe[src*="login.taobao.com"],iframe[src*="captcha"],iframe[src*="punish"],#baxia-dialog-content,.nc-container')]
+          .some(el => el.getClientRects().length);
+        if (verification) {
+          await flush();
+          if (!active(task)) break;
+          throw new Error('请在淘宝窗口登录或完成安全验证后继续比价');
+        }
+        let added = 0;
+        // Read all mounted cards: a fixed first-60 slice misses newly appended results.
+        const visibleItems = extractTaobaoSearchCandidates(Infinity);
+        if (visibleItems.length) sawCards = true;
+        for (const item of visibleItems) {
+          if (known.has(item.url)) continue;
+          known.add(item.url); pending.set(item.url,item); added++;
+          if (pending.size === 60) {
+            await flush();
+            if (!active(task)) break;
+          }
+        }
+        if (!active(task)) break;
+        if (added) { quiet = 0; awaitingNext = false; }
+        const atBottom = scrollTaobaoResults();
+        quiet = added || !atBottom ? 0 : quiet + 1;
+        if (quiet < 6) continue;
+        if (awaitingNext) throw new Error('下一批商品尚未加载，请检查淘宝页面后继续');
+        await flush();
+        if (!active(task)) break;
+        const next = taobaoNextButton();
+        if (next) {
+          // Use the actual website control; never invent page offsets or reload to fetch a batch.
+          task = await requestJson(endpoint);
+          if (!active(task)) return;
+          next.click(); quiet = 0; awaitingNext = true;
+          continue;
+        }
+        if (!sawCards) throw new Error('未读取到搜索商品，请登录或完成页面验证后继续');
+        task = await requestJson(endpoint, {method:'POST',body:{action:'finish',requestId:lowestRequest,reason:'visible-end'}});
+        break;
+      }
+      if (active(task)) {
+        await flush();
+        if (active(task)) throw new Error('采集时间已到，结果已保留，可继续检索');
+      }
+      if (task.state === 'completed') {
+        toast(`已采集 ${task.count} 个候选，请核对规格与运费`, 'success');
+        await focusDashboard();
+      } else if (task.state === 'waiting') { toast(task.error, 'info'); }
+    } catch (e) {
+      await requestJson(endpoint, {method:'POST',body:{action:'waiting',requestId:lowestRequest,error:e.message}}).catch(()=>{});
+      panelSub.textContent = e.message;
+      toast(e.message, 'error');
+    } finally { setBusy(false); refreshSiteButton(); }
+  }
+  let bookLookup = SITE === 'kongfz' && lookupParams.get('taoshuLookup') ? {
+    id: lookupParams.get('taoshuRequirement'), requestId: lookupParams.get('taoshuLookup'),
+    query: lookupParams.get('keyword') || lookupParams.get('key') || '', createdAt: Date.now(),
+  } : null;
+  try {
+    if (bookLookup) sessionStorage.setItem('taoshu-book-lookup', JSON.stringify(bookLookup));
+    else if (HOST === 'search.kongfz.com') {
+      const previous = JSON.parse(sessionStorage.getItem('taoshu-book-lookup') || 'null');
+      if (previous && Date.now() - previous.createdAt < 600000 &&
+          previous.query === (lookupParams.get('keyword') || lookupParams.get('key'))) bookLookup = previous;
+    }
+  } catch { /* Storage may be disabled; URL context still works. */ }
+  async function searchBookMetadata() {
+    if (!bookLookup || state.busy) return;
+    setBusy(true);
+    openPanel('检索图书资料', bookLookup.query);
+    try {
+      const params = new URLSearchParams({ keyword: bookLookup.query, page: '1', dataType: '1' });
+      const response = await fetch('/pc-gw/search-web/client/pc/product/keyword/list?' + params, { credentials: 'same-origin', signal: AbortSignal.timeout(20000) });
+      if (!response.ok) throw new Error('孔夫子返回 HTTP ' + response.status + '，请稍后重试');
+      const result = await response.json();
+      if (result.status !== 1) throw new Error(result.message || result.data?.requestRejectCause || '请在孔夫子登录或完成页面验证后，点击重试检索');
+      if (!Array.isArray(result.data?.itemResponse?.list)) throw new Error('网站结果格式发生变化，请查看搜索页核对后重试');
+      const items = result.data.itemResponse.list.map(b => {
+        const title = String(b.bookName || b.itemName || b.title || '').replace(/<[^>]*>/g, '');
+        return { title, author: b.author || '', publisher: b.press || '', isbn: b.isbn || '',
+          edition: b.edition || title.match(/第[一二三四五六七八九十百\d]+版/)?.[0] || '',
+          volume: b.volume || '', publicationYear: b.pubDate || '',
+          sourceUrl: b.link?.pc || b.url || (b.shopId && b.itemId ? `https://book.kongfz.com/${b.shopId}/${b.itemId}/` : '') };
+      });
+      const saved = await requestJson('/api/commerce/requirements/' + encodeURIComponent(bookLookup.id) + '/search', {
+        method: 'POST', body: { requestId: bookLookup.requestId, items },
+      });
+      toast(`已检索到 ${saved.items.length} 条候选，请返回匹配图书选择`, 'success');
+      panelSub.textContent = `已返回 ${saved.items.length} 条候选`;
+    } catch (e) {
+      await requestJson('/api/commerce/requirements/' + encodeURIComponent(bookLookup.id) + '/search', {
+        method: 'POST', body: { requestId: bookLookup.requestId, error: e.message },
+      }).catch(() => {});
+      toast(e.message, 'error');
+      panelSub.textContent = e.message;
+    } finally { setBusy(false); refreshSiteButton(); }
+  }
+
   /* --------------------------- 新窗口跳转兼容 --------------------------- */
   /* WebView2 默认不弹出 target=_blank / window.open 新窗口，淘宝、孔夫子
      大量链接依赖新窗口，点击后会看起来“没有反应”。这里改成当前窗口跳转。 */
@@ -37,6 +239,7 @@
     try {
       const parsed = new URL(String(value), location.href);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+      if (sourceBookId && ['item.taobao.com','detail.tmall.com'].includes(parsed.hostname)) parsed.searchParams.set('taoshuSourceBook', String(sourceBookId));
       if (parsed.href === location.href) return false;
       location.assign(parsed.href);
       return true;
@@ -53,6 +256,15 @@
           ? event.target.closest('a[href]')
           : null;
         if (!anchor) return;
+        if (sourceBookId) {
+          try {
+            const url = new URL(anchor.href);
+            if (['item.taobao.com','detail.tmall.com'].includes(url.hostname)) {
+              url.searchParams.set('taoshuSourceBook', String(sourceBookId));
+              anchor.href = url.href;
+            }
+          } catch { /* Ignore non-product links. */ }
+        }
         const target = String(anchor.getAttribute('target') || '').trim().toLowerCase();
         if (!target || target === '_self') return;
         if (openInSameWindow(anchor.href)) event.preventDefault();
@@ -740,6 +952,7 @@
     try {
       const payload = extractTaobao();
       payload.asSource = true;
+      if (sourceBookId) payload.sourceBookId = sourceBookId;
       if (!payload.title) throw new Error('没有识别到商品标题，请确认当前是商品详情页');
       if (!payload.itemId) throw new Error('没有识别到商品 ID，请打开具体商品页');
 
@@ -749,7 +962,7 @@
 
       const result = await requestJson('/api/captures', { method: 'POST', body: payload });
       const book = result.book;
-      appendLog('已保存货源候选，请回到工作台关联标准书目', 'ok');
+      appendLog(sourceBookId ? '已返回本书货源页，请核对规格、价格及代发' : '已保存货源候选，请回到图书的货源页选择并核对', 'ok');
       toast(`货源已采集：${payload.title.slice(0, 24)}`, 'success');
       panelSub.textContent = '入库成功';
       if (book) {
@@ -1673,8 +1886,9 @@
 
   function refreshSiteButton() {
     if (SITE === 'taobao') {
-      siteButton.textContent = state.busy ? '抓取中…' : '抓取本页';
+      siteButton.textContent = state.busy ? (lowestRequest ? '比价中…' : '抓取中…') : lowestRequest ? '继续比价' : sourceSearch ? '采集货源候选' : '抓取本页';
     } else if (SITE === 'kongfz') {
+      if (bookLookup) { siteButton.textContent = state.busy ? '检索中…' : '重试书目检索'; return; }
       if (state.context) {
         siteButton.textContent = `导入到《${(state.context.title || '').slice(0, 8)}》`;
         siteButton.classList.add('accent');
@@ -1690,6 +1904,12 @@
   }
 
   async function runSiteAction() {
+    if (sourceSearch && lowestRequest) return runLowestPrice(true);
+    if (sourceSearch) {
+      if (!(await collectTaobaoSearch())) toast('未识别到商品，请登录或等待结果加载后重试，也可进入商品详情抓取', 'info');
+      return;
+    }
+    if (bookLookup) return searchBookMetadata();
     if (SITE === 'taobao') return captureTaobao();
     if (SITE === 'kongfz') return runKongfzAction();
     if (SITE === 'goofish') return runGoofishAction();
@@ -1726,11 +1946,23 @@
     await checkOnline();
 
     if (SITE === 'taobao') {
+      if (sourceSearch && lowestRequest) { await runLowestPrice(); return; }
+      if (sourceSearch) {
+        let attempts = 0;
+        const timer = setInterval(async () => {
+          if (++attempts > 20) {
+            clearInterval(timer);
+            toast('搜索结果未就绪，请登录或调整检索词后点击采集货源候选', 'info');
+          } else if (await collectTaobaoSearch()) clearInterval(timer);
+        }, 1500);
+        window.addEventListener('pagehide', () => clearInterval(timer), {once:true});
+      }
       setPanelBody(
-        '<p class="muted">打开淘宝/天猫商品详情页后，点工具条上的「抓取本页」，商品会保存到本地书库。</p>'
+        sourceSearch ? '<p class="muted">正在读取当前搜索结果；登录后可点击「采集货源候选」重试。</p>' : '<p class="muted">打开商品详情页后点「抓取本页」，保存为待核验货源。</p>'
       );
     }
     if (SITE === 'kongfz') {
+      if (bookLookup) { await searchBookMetadata(); return; }
       const context = await loadImportContext();
       if (context) {
         toast(`找图目标：《${context.title}》`, 'info', 5000);
