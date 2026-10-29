@@ -698,6 +698,7 @@ pub fn create_book(conn: &Connection, patch: &BookPatch) -> rusqlite::Result<Boo
         ],
     )?;
     let id = conn.last_insert_rowid();
+    crate::agents::ai::auto_queue(conn,id,"book")?;
     get_book(conn, id)?.ok_or(rusqlite::Error::QueryReturnedNoRows)
 }
 
@@ -706,6 +707,7 @@ pub fn update_book(
     id: i64,
     patch: &BookPatch,
 ) -> rusqlite::Result<Option<Book>> {
+    let before=get_book(conn,id)?;
     let mut sets: Vec<&str> = Vec::new();
     let mut values: Vec<Value> = Vec::new();
 
@@ -754,7 +756,10 @@ pub fn update_book(
         let sql = format!("UPDATE books SET {} WHERE id = ?", sets.join(", "));
         conn.execute(&sql, params_from_iter(values.iter()))?;
     }
-    get_book(conn, id)
+    crate::agents::ai::refresh_reference_cost(conn,id)?;
+    let after=get_book(conn,id)?;
+    if before.as_ref().zip(after.as_ref()).is_some_and(|(a,b)|(&a.title,&a.author,&a.publisher,&a.isbn,&a.edition,&a.condition,&a.note)!=(&b.title,&b.author,&b.publisher,&b.isbn,&b.edition,&b.condition,&b.note)){crate::agents::ai::auto_queue(conn,id,"book")?;}
+    Ok(after)
 }
 
 pub fn book_image_rows(conn: &Connection, book_id: i64) -> rusqlite::Result<Vec<ImageRow>> {

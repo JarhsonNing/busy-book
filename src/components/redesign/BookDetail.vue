@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import { api, assetUrl } from "../../api";
 import { fulfillmentStates } from "../../commerce";
 import BookOperations from "../BookOperations.vue";
+import DeleteBooksDialog from "./DeleteBooksDialog.vue";
+import BookAiDraft from "./BookAiDraft.vue";
 const props = defineProps({ book: Object });
 const emit = defineEmits([
   "updated",
@@ -12,8 +14,12 @@ const emit = defineEmits([
   "publish",
   "open-order",
   "deleted",
+  "ai-settings",
+  "ai-progress",
 ]);
 const tab = ref("info"),
+  deleteOpen = ref(false),
+  aiDraft = ref(null),
   busy = ref(false),
   error = ref(""),
   saved = ref(""),
@@ -43,10 +49,12 @@ function readForm() {
   saved.value = JSON.stringify(form);
 }
 watch(() => props.book.id, readForm, { immediate: true });
+watch(()=>props.book,()=>{if(!dirty.value)readForm();});
 async function refresh() {
   try {
     business.value = await api.commerce("/books/" + props.book.id);
     await businessEditor.value?.refresh();
+    await aiDraft.value?.refresh();
   } catch (e) {
     error.value = e.message;
   }
@@ -77,6 +85,7 @@ async function publish() {
   }
   emit("publish");
 }
+async function generateAi(){if(dirty.value){await save();if(error.value)return;}tab.value='sales';await nextTick();aiDraft.value?.show();}
 async function upload(e) {
   const files = Array.from(e.target.files || []);
   await act(async () => {
@@ -110,19 +119,6 @@ async function businessUpdated() {
   await refresh();
   emit("updated");
 }
-async function remove() {
-  if (confirm(`删除《${props.book.title}》及其图片？`)) {
-    busy.value = true;
-    try {
-      await api.deleteBook(props.book.id);
-      emit("deleted");
-    } catch (e) {
-      error.value = e.message;
-    } finally {
-      busy.value = false;
-    }
-  }
-}
 function showTab(value) {
   tab.value = value;
 }
@@ -142,9 +138,13 @@ onMounted(refresh);
         <span v-if="!business?.physicalReady" class="tag warning">缺货源</span>
         <span v-if="!book.imageCount" class="tag warning">缺图片</span>
       </div>
-      <button class="btn primary push-right" :disabled="busy" @click="publish">
+      <div class="row push-right">
+      <button class="btn" :disabled="busy" @click="generateAi">AI 完善</button>
+      <button class="btn" :class="{ danger: business?.canDelete }" :disabled="busy || !business" :title="business?.deleteReason || '删除图书'" :aria-label="business?.canDelete ? '删除' : '查看不可删除原因：' + (business?.deleteReason || '正在检查')" @click="deleteOpen = true">{{ business && !business.canDelete ? '不可删除' : '删除' }}</button>
+      <button class="btn primary" :disabled="busy" @click="publish">
         发布
       </button>
+      </div>
     </header>
     <nav class="page-tabs" aria-label="图书详情">
       <button
@@ -152,7 +152,7 @@ onMounted(refresh);
           info: '资料',
           sources: '货源',
           images: '图片',
-          sales: '销售记录',
+          sales: '销售',
         }"
         :key="key"
         :class="{ active: tab === key }"
@@ -195,6 +195,8 @@ onMounted(refresh);
               ><input
                 v-model.number="form[key]"
                 class="input"
+                :readonly="key==='costPrice' && !!business?.profile?.taobaoCostBasis"
+                :title="key==='costPrice' && business?.profile?.taobaoCostBasis ? '淘宝第二低商品价，不含运费' : undefined"
                 type="number"
                 min="0"
                 :step="key === 'stock' ? 1 : 0.01" /></label
@@ -205,14 +207,7 @@ onMounted(refresh);
           </div>
           <div class="row">
             <button class="btn primary" :disabled="busy || !dirty">
-              保存资料</button
-            ><button
-              class="link-btn danger push-right"
-              type="button"
-              @click="remove"
-            >
-              删除图书
-            </button>
+              保存资料</button>
           </div>
         </form>
         <details class="detail-section">
@@ -337,6 +332,7 @@ onMounted(refresh);
       </div>
     </section>
     <section v-if="tab === 'sales'">
+      <BookAiDraft ref="aiDraft" :book-id="book.id" @updated="businessUpdated" @settings="$emit('ai-settings')" @progress="$emit('ai-progress',$event)" />
       <h3>店铺商品</h3>
       <BookOperations
         ref="businessEditor"
@@ -381,5 +377,6 @@ onMounted(refresh);
         </tbody>
       </table>
     </section>
+    <DeleteBooksDialog v-if="deleteOpen" :ids="[book.id]" @close="deleteOpen = false" @deleted="(ids) => ids.length ? $emit('deleted') : refresh()" />
   </section>
 </template>

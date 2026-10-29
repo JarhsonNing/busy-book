@@ -28,7 +28,7 @@ fn url(v: &Value, bid: i64) -> String {
         .append_pair("taoshuPriceSearch", text(v, "requestId"));
     u.into()
 }
-fn product_url(raw: &str) -> Option<String> {
+pub(crate) fn product_url(raw: &str) -> Option<String> {
     let u = reqwest::Url::parse(raw).ok()?;
     if !matches!(u.scheme(), "http" | "https") || !u.username().is_empty() || u.password().is_some()
     {
@@ -296,6 +296,7 @@ pub(super) async fn control(
     v["updatedAt"] = json!(db::now());
     v["touchedAt"] = json!(chrono::Utc::now().timestamp_millis());
     write(&tx, bid, &v)?;
+    if ["page","batch","finish"].contains(&action.as_str()){crate::agents::ai::auto_queue(&tx,bid,"source")?;}
     let result = decorate(&tx, bid, v)?;
     tx.commit()?;
     Ok(Json(result))

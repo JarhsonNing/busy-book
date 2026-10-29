@@ -94,6 +94,7 @@ async function refreshSources() {
   await load();
   await loadCandidates();
   await loadPrice();
+  emit('updated');
 }
 async function searchTaobao() {
   error.value = '';

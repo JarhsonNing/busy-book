@@ -31,6 +31,7 @@ pub(super) async fn create(
     Json(v): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
     let kind = required(&v, "kind")?;
+    if kind=="ai"{return crate::agents::ai::enqueue(&s,&v).map(Json);}
     if !["catalog", "sources", "images", "publish"].contains(&kind.as_str()) {
         return Err(ApiError::bad("未知任务类型"));
     }
@@ -146,7 +147,7 @@ pub fn start(s: AppState) {
                 let c = lock(&s);
                 rows(
                     &c,
-                    &format!("{SELECT} WHERE state='queued' ORDER BY id LIMIT 1"),
+                    &format!("{SELECT} WHERE state='queued' AND (kind<>'ai' OR coalesce(json_extract(request,'$.notBefore'),0)<=unixepoch()) ORDER BY id LIMIT 1"),
                     [],
                 )
                 .ok()
@@ -154,7 +155,19 @@ pub fn start(s: AppState) {
             };
             if let Some(job) = next {
                 let id = job["id"].as_i64().unwrap();
-                if text(&job, "kind") != "catalog" {
+                if text(&job,"kind")=="ai"{
+                    let claimed=lock(&s).execute("UPDATE collection_jobs SET state='running',stage='AI 准备资料',error='',updated_at=? WHERE id=? AND state='queued'",params![db::now(),id]).unwrap_or(0);
+                    if claimed>0{
+                        let worker=s.clone();
+                        match tokio::task::spawn_blocking(move||crate::agents::ai::run_job(&worker,&job)).await{
+                            Ok(Ok(Some(result)))=>{
+                                let failed=result["errors"].as_array().map_or(0,Vec::len);let total=result["items"].as_array().map_or(0,Vec::len);
+                                let state=if failed==0{"completed"}else if failed==total{"failed"}else{"partial"};
+                                let _=lock(&s).execute("UPDATE collection_jobs SET state=?,stage=?,result=?,updated_at=? WHERE id=? AND state='running'",params![state,if failed==0{"草稿已保存"}else{"生成结束，部分结果待处理"},result.to_string(),db::now(),id]);
+                            },Ok(Ok(None))=>{},Ok(Err(e))=>fail(&s,id,e),Err(e)=>fail(&s,id,e.to_string()),
+                        }
+                    }
+                }else if text(&job, "kind") != "catalog" {
                     let _=lock(&s).execute("UPDATE collection_jobs SET state='waiting',stage='等待处理',updated_at=? WHERE id=? AND state='queued'",params![db::now(),id]);
                 } else {
                     let claimed=lock(&s).execute("UPDATE collection_jobs SET state='running',stage='获取官方目录',error='',updated_at=? WHERE id=? AND state='queued'",params![db::now(),id]).unwrap_or(0);

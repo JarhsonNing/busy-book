@@ -1,4 +1,6 @@
 pub mod api;
+pub mod book_deletion;
+pub mod agents;
 pub mod commerce;
 pub mod db;
 pub mod gitee;

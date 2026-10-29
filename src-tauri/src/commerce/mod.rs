@@ -6,7 +6,7 @@ mod fulfillment;
 pub mod jobs;
 mod library;
 mod book_search;
-mod price_search;
+pub(crate) mod price_search;
 pub mod schema;
 #[cfg(test)]
 mod tests;
@@ -205,6 +205,9 @@ fn summary(conn: &Connection, b: &crate::models::Book) -> Result<Value, ApiError
     v["physicalReady"] = json!(physical);
     v["digitalReady"] = json!(digital);
     v["channelCount"] = json!(channels.len());
+    let deletion = crate::book_deletion::check(conn, b.id)?;
+    v["canDelete"] = json!(deletion.can_delete);
+    v["deleteReason"] = json!(deletion.reason);
     v["listed"] = json!(channels
         .iter()
         .any(|c| text(&c["data"], "state") == "published"));
@@ -252,8 +255,9 @@ async fn save_profile(
     if !year.is_empty() && !(year.len() == 4 && year.chars().all(|ch| ch.is_ascii_digit())) {
         return Err(ApiError::bad("出版年份应为四位数字"));
     }
-    let data =
-        json!({"publicationYear":year,"volume":text(&v,"volume"),"confirmed":v["confirmed"]==true});
+    let raw:Option<String>=c.query_row("SELECT data FROM book_profiles WHERE book_id=?",[id],|r|r.get(0)).optional()?;
+    let mut data=raw.map(parse).unwrap_or(json!({}));
+    data["publicationYear"]=json!(year);data["volume"]=json!(text(&v,"volume"));data["confirmed"]=json!(v["confirmed"]==true);
     c.execute("INSERT INTO book_profiles(book_id,data) VALUES(?,?) ON CONFLICT(book_id) DO UPDATE SET data=excluded.data",params![id,data.to_string()])?;
     Ok(Json(data))
 }
@@ -314,6 +318,7 @@ async fn save_source(
         tx.last_insert_rowid()
     };
     event(&tx, "source", id, "save", &json!({"bookId":bid}))?;
+    if let Some(bid)=bid{crate::agents::ai::auto_queue(&tx,bid,"source")?;}
     tx.commit()?;
     Ok(Json(json!({"id":id})))
 }
@@ -338,6 +343,7 @@ pub fn attach_capture_candidate(conn: &Connection, capture: &crate::models::Capt
         let data = json!({"url":capture.url,"title":capture.title,"shop":capture.shop,"price":capture.price,"freight":null,"sku":"","condition":"","status":"pending","dropship":false,"checkedAt":"","origin":"capture","originCaptureId":capture.id});
         conn.execute("INSERT INTO book_sources(book_id,data,updated_at) VALUES(?,?,?)",params![book_id,data.to_string(),db::now()])?;
     }
+    crate::agents::ai::auto_queue(conn,book_id,"source")?;
     Ok(())
 }
 async fn add_resource(

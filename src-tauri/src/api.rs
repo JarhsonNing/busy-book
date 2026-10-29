@@ -105,6 +105,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/settings", get(settings_get).put(settings_put))
         .route("/api/captures", post(create_capture))
         .route("/api/books", get(books_list).post(books_create))
+        .route("/api/books/delete-preview", post(books_delete_preview))
+        .route("/api/books/delete", post(books_delete))
         .route(
             "/api/books/{id}",
             get(book_get).patch(book_patch).delete(book_delete),
@@ -127,6 +129,7 @@ pub fn router(state: AppState) -> Router {
         .merge(crate::xianyu::router())
         .merge(crate::gitee::router())
         .merge(crate::commerce::router())
+        .merge(crate::agents::router())
         .fallback(not_found)
         .with_state(state.clone())
         .layer(DefaultBodyLimit::max(40 * 1024 * 1024))
@@ -155,6 +158,11 @@ async fn authorize(
     next: Next,
 ) -> Result<Response, ApiError> {
     let path = req.uri().path().to_string();
+    if path == "/mcp" {
+        if !crate::agents::mcp::origin_allowed(req.headers()) { return Err(ApiError::forbidden("MCP 来源不受信任")); }
+        if !crate::agents::mcp::authorized(&state,req.headers()) { return Err(ApiError::unauthorized("MCP 未开启或导入令牌无效")); }
+        return Ok(next.run(req).await);
+    }
     let is_public = req.method() == Method::OPTIONS
         || path == "/api/health"
         || path == "/api/token"
@@ -312,7 +320,7 @@ async fn create_capture(
     let detail = {
         let conn = lock(&state);
         match book_id {
-            Some(id) => db::book_detail(&conn, id)?,
+            Some(id) => {crate::agents::ai::auto_queue(&conn,id,"book")?;db::book_detail(&conn, id)?},
             None => None,
         }
     };
@@ -381,17 +389,25 @@ async fn book_delete(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<Value>, ApiError> {
-    let rows = {
-        let conn = lock(&state);
-        db::book_image_rows(&conn, id)?
-    };
-    for row in &rows {
-        images::remove_file(&state.image_dir, &row.origin_file);
-        images::remove_file(&state.image_dir, &row.processed_file);
+    let result = crate::book_deletion::delete(&state, &[id])?;
+    if let Some(blocked) = result["skipped"].as_array().and_then(|v| v.first()) {
+        return Err(ApiError::bad(blocked["reason"].as_str().unwrap_or("不能删除")));
     }
-    let conn = lock(&state);
-    let changed = conn.execute("DELETE FROM books WHERE id = ?", [id])?;
-    Ok(Json(json!({ "deleted": changed > 0 })))
+    Ok(Json(json!({"deleted":true})))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeleteBooks { ids: Vec<i64> }
+
+async fn books_delete_preview(State(state): State<AppState>, Json(input): Json<DeleteBooks>) -> Result<Json<Value>, ApiError> {
+    let ids = crate::book_deletion::ids(input.ids)?;
+    Ok(Json(crate::book_deletion::preview(&state, &ids)?))
+}
+
+async fn books_delete(State(state): State<AppState>, Json(input): Json<DeleteBooks>) -> Result<Json<Value>, ApiError> {
+    let ids = crate::book_deletion::ids(input.ids)?;
+    Ok(Json(crate::book_deletion::delete(&state, &ids)?))
 }
 
 /* ---------------------------------- 图片 ---------------------------------- */
@@ -694,12 +710,13 @@ async fn listing_create(
     Path(id): Path<i64>,
     Json(input): Json<ListingInput>,
 ) -> Result<Json<Value>, ApiError> {
-    let (book, book_images, settings) = {
+    let (book, book_images, settings, input) = {
         let conn = lock(&state);
         (
             db::get_book(&conn, id)?.ok_or_else(|| ApiError::not_found("图书不存在"))?,
             db::images_for_book(&conn, id)?,
             db::settings(&conn),
+            crate::agents::ai::listing_defaults(&conn,id,input)?,
         )
     };
     let (built, image_payload) =

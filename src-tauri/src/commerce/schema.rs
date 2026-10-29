@@ -8,7 +8,7 @@ pub fn backup(conn: &Connection, directory: &Path) -> anyhow::Result<()> {
         |r| r.get(0),
     )?;
     let migrated: bool = conn.query_row(
-        "SELECT COUNT(*)=3 FROM sqlite_master WHERE name IN ('collection_jobs','commerce_meta','price_searches')",
+        "SELECT COUNT(*)=4 FROM sqlite_master WHERE name IN ('collection_jobs','commerce_meta','price_searches','agent_imports')",
         [],
         |r| r.get(0),
     )?;
@@ -31,6 +31,7 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_jobs_state ON collection_jobs(state,id);
         CREATE TABLE IF NOT EXISTS school_programs(id TEXT PRIMARY KEY, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS book_profiles(book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE, data TEXT NOT NULL DEFAULT '{}');
+        CREATE TABLE IF NOT EXISTS book_ai_drafts(book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE, data TEXT NOT NULL DEFAULT '{}');
         CREATE TABLE IF NOT EXISTS price_searches(book_id INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE, data TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS school_requirements(id TEXT PRIMARY KEY, book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
             school TEXT NOT NULL, year INTEGER NOT NULL, major TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', data TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -46,12 +47,15 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
             app_key TEXT NOT NULL, shop TEXT NOT NULL, product_id TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, updated_at TEXT NOT NULL,
             UNIQUE(app_key,shop,book_id));
         CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_remote ON channel_products(app_key,shop,product_id) WHERE product_id<>'';
+        CREATE INDEX IF NOT EXISTS idx_channel_book ON channel_products(book_id);
         CREATE TABLE IF NOT EXISTS fulfillment_orders(id INTEGER PRIMARY KEY AUTOINCREMENT, app_key TEXT NOT NULL, order_no TEXT NOT NULL,
             book_id INTEGER REFERENCES books(id) ON DELETE RESTRICT, channel_id INTEGER REFERENCES channel_products(id) ON DELETE RESTRICT,
             kind TEXT NOT NULL DEFAULT 'unknown', state TEXT NOT NULL DEFAULT 'unmatched', snapshot TEXT NOT NULL,
             data TEXT NOT NULL DEFAULT '{}', updated_at TEXT NOT NULL, UNIQUE(app_key,order_no));
         CREATE TABLE IF NOT EXISTS purchase_attempts(id INTEGER PRIMARY KEY AUTOINCREMENT, fulfillment_id INTEGER NOT NULL REFERENCES fulfillment_orders(id) ON DELETE RESTRICT,
             state TEXT NOT NULL DEFAULT 'draft', data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS idx_fulfillment_book ON fulfillment_orders(book_id);
+        CREATE INDEX IF NOT EXISTS idx_fulfillment_channel ON fulfillment_orders(channel_id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_active_purchase ON purchase_attempts(fulfillment_id) WHERE state NOT IN ('canceled','replaced');
         CREATE TABLE IF NOT EXISTS commerce_events(id INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, entity_id TEXT NOT NULL,
             action TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL);

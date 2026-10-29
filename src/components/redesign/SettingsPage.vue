@@ -1,13 +1,22 @@
 <script setup>
 import { onMounted, reactive, ref } from "vue";
 import { api } from "../../api";
-const emit = defineEmits(["updated"]);
+import AgentSettings from './AgentSettings.vue';
+import AiSettings from './AiSettings.vue';
+const props = defineProps({ active: { type: Boolean, default: true } });
+const emit = defineEmits(["updated", "open-opencode", "open-qoder"]);
 const tab = ref("platform"),
   busy = ref(false),
   error = ref(""),
   message = ref(""),
   configured = ref(false),
   hostingConfigured = ref(false);
+const agentsVisited=ref(false);
+const agentProvider=ref('opencode');
+const aiVisited=ref(false);
+function showAgents(provider='opencode') { agentProvider.value=provider; tab.value = 'agents'; agentsVisited.value = true; }
+function showAi(){tab.value='ai';aiVisited.value=true;}
+defineExpose({ showAgents, showAi });
 const credentials = reactive({ appKey: "", appSecret: "" }),
   hosting = reactive({
     repoUrl: "",
@@ -85,16 +94,20 @@ onMounted(load);
           images: '图片托管',
           pricing: '定价与文案',
           app: '应用',
+          agents: 'Agent 接入',
+          ai: 'AI 流程',
         }"
         :key="key"
         :class="{ active: tab === key }"
-        @click="tab = key"
+        @click="tab = key; if(key==='agents')agentsVisited=true; if(key==='ai')aiVisited=true"
       >
         {{ label }}
       </button>
     </nav>
     <p v-if="error" class="error-panel" role="alert">{{ error }}</p>
     <p v-if="message" class="success-message" role="status">{{ message }}</p>
+    <AgentSettings v-if="agentsVisited" v-show="tab==='agents'" :key="agentProvider" :active="props.active && tab==='agents'" :selected-provider="agentProvider" @open-opencode="emit('open-opencode')" @open-qoder="emit('open-qoder')" />
+    <AiSettings v-if="aiVisited" v-show="tab==='ai'" @agent-settings="showAgents" />
     <form
       v-if="tab === 'platform'"
       class="settings-form"

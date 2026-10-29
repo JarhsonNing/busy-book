@@ -320,6 +320,21 @@ node scripts/smoke.mjs
 修改 `src-tauri/inject/browser.js` 后必须重新编译 Rust（`include_str!` 会在编译期嵌入脚本）；扩展模式则重新运行 `npm run extension` 并在 `chrome://extensions` 点刷新。
 
 
+### OpenCode 与 Qoder CLI
+
+- 在「设置 → Agent 接入」切换 OpenCode / Qoder CLI，可选择本机程序或安装应用专用版。专用版保存在应用数据目录的 `runtime/` 内，不修改系统 PATH。
+- 两者共用固定项目目录 `<应用数据目录>/agent-support/workspace`，设置页面可查看完整路径。所有应用发起的 CLI 任务、版本和模型检测均显式设置工作目录，AI 草稿附件与日志保存在该目录内部。
+- OpenCode 保留内嵌网页，网关将 API 请求绑定到固定目录并拒绝通过查询参数或请求头切换目录。Qoder 使用原生交互终端，启动时同时指定进程工作目录与 `--cwd`；关闭终端或退出应用会清理其进程树。
+- 开启 MCP 导入后会生成两个 Agent 的项目配置与 `taoshu-import`、`taoshu-workflow` Skills。Qoder 使用项目 `.mcp.json` 和 `.qoder/skills/`，通过 `--strict-mcp-config` 加载项目指定的 MCP；首次启动按终端提示登录。
+- Qoder 专用版采用[官方安装脚本](https://docs.qoder.com/zh/cli/installation)引用的原生发行源，校验官方 SHA-256 后提取程序；[CLI 参数文档](https://docs.qoder.com/zh/cli/cli-reference)说明 `--cwd` 等选项。
+- 「AI 流程」可选择 OpenCode 或 Qoder CLI，并分别保存模型；单本或批量“AI 完善”可覆盖本次执行器和模型。自动任务使用保存的默认值，任务创建后冻结执行器和模型，暂停、继续及重试均沿用原配置。复制命令和 MCP `taoshu_generate_draft` 同样支持 `provider: "opencode" | "qoder"`、`model`。
+- Qoder 登录状态由 `status -o json` 查询，界面只返回是否登录，不暴露账户标识或凭据。“登录 Qoder”在固定目录打开官方 `login` 流程，无需先开启 MCP；完成后自动刷新登录状态与模型。交互终端使用 AI 流程中保存的 Qoder 模型，重新打开后生效。
+- 两个执行器生成自动草稿时均禁用工具；Qoder 使用非交互 JSON 输出、标准输入传递图书证据，并禁用 MCP 与 Hooks。此处固定的是应用启动的项目目录，并非操作系统沙箱；交互终端的文件访问仍由各 CLI 的权限规则管理。
+
+验证：`node --test scripts/opencode-web.test.mjs`；`node scripts/qoder-smoke.mjs --install` 会在隔离数据目录中验证真实下载安装及模拟终端生命周期，不发送模型请求。已有后端运行时可通过 `TAOSHU_TEST_API_BINARY` 和 `TAOSHU_TEST_PORT` 指定独立测试程序与端口。
+
+`node scripts/qoder-ai-smoke.mjs` 使用明确模拟的 Qoder CLI 验证登录、模型列表、长提示词、真实队列与草稿写入、暂停后切换默认执行器、失败重试和 MCP 命令行，不调用远程模型。真实账户的浏览器登录由用户完成；真实 Qoder 1.1.80 已验证登录状态查询及非交互启动参数兼容性。
+
 ### 订单关联本地图书
 
 - 订单列表按当前应用的发布记录匹配管家商品 ID、闲鱼商品 ID 或商家编码；多个匹配发生冲突时保持未关联，不按书名猜测。

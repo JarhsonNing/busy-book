@@ -47,6 +47,31 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  aiConfig: () => request('/api/agents/ai/config'),
+  saveAiConfig: (body) => request('/api/agents/ai/config', {method:'POST',body}),
+  aiModels: (provider) => request('/api/agents/ai/models'+(provider?'?provider='+encodeURIComponent(provider):'')),
+  aiDraft: (id) => request(`/api/agents/ai/books/${id}/draft`),
+  saveAiDraft: (id,body) => request(`/api/agents/ai/books/${id}/draft`,{method:'POST',body}),
+  aiCommand: (bookId,task,prompt,options={}) => request('/api/agents/ai/command',{method:'POST',body:{bookId,task,prompt,...options}}),
+  agentStatus: () => request('/api/agents/opencode'),
+  selectOpenCode: (body) => request('/api/agents/opencode', {method:'POST',body}),
+  browseOpenCode: () => request('/api/agents/opencode/browse', {method:'POST'}),
+  installOpenCode: () => request('/api/agents/opencode/install', {method:'POST'}),
+  launchOpenCode: () => request('/api/agents/opencode/launch', {method:'POST'}),
+  openCodeWeb: () => request('/api/agents/opencode/web'),
+  stopOpenCodeWeb: () => request('/api/agents/opencode/web', {method:'DELETE'}),
+  qoderStatus: () => request('/api/agents/qoder'),
+  selectQoder: (body) => request('/api/agents/qoder', {method:'POST',body}),
+  browseQoder: () => request('/api/agents/qoder/browse', {method:'POST'}),
+  installQoder: () => request('/api/agents/qoder/install', {method:'POST'}),
+  launchQoder: () => request('/api/agents/qoder/launch', {method:'POST'}),
+  loginQoder: () => request('/api/agents/qoder/login', {method:'POST'}),
+  qoderAccount: () => request('/api/agents/qoder/account'),
+  qoderCli: () => request('/api/agents/qoder/cli'),
+  stopQoder: () => request('/api/agents/qoder/cli', {method:'DELETE'}),
+  agentMcp: () => request('/api/agents/mcp'),
+  setAgentMcp: (enabled) => request('/api/agents/mcp', {method:'POST',body:{enabled}}),
+  exportAgentMcp: () => request('/api/agents/mcp/export', {method:'POST'}),
   commerce: (path, body) =>
     request('/api/commerce' + path, body === undefined ? {} : { method: 'POST', body }),
   giteeConfig: () => request('/api/xianyu/gitee/config'),
@@ -81,6 +106,8 @@ export const api = {
   createBook: (patch) => request('/api/books', { method: 'POST', body: patch }),
   updateBook: (id, patch) => request(`/api/books/${id}`, { method: 'PATCH', body: patch }),
   deleteBook: (id) => request(`/api/books/${id}`, { method: 'DELETE' }),
+  previewDeleteBooks: (ids) => request('/api/books/delete-preview', {method:'POST',body:{ids}}),
+  deleteBooks: (ids) => request('/api/books/delete', {method:'POST',body:{ids}}),
 
   importImages: (id, urls, source = 'kongfz') =>
     request(`/api/books/${id}/images`, { method: 'POST', body: { urls, source } }),

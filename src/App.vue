@@ -7,6 +7,7 @@ import {
   Settings,
   ArrowLeft,
   RefreshCw,
+  Bot,
 } from "@lucide/vue";
 import { api, initApi, openBrowser, searchUrl, taobaoSourceUrl } from "./api";
 import { useToast } from "./composables/toast";
@@ -18,6 +19,8 @@ import BookLibrary from "./components/redesign/BookLibrary.vue";
 import BookDetail from "./components/redesign/BookDetail.vue";
 import CollectionCenter from "./components/redesign/CollectionCenter.vue";
 import SettingsPage from "./components/redesign/SettingsPage.vue";
+import OpenCodePage from "./components/redesign/OpenCodePage.vue";
+import QoderPage from "./components/redesign/QoderPage.vue";
 import "./commerce.css";
 
 const toast = useToast();
@@ -34,11 +37,14 @@ const selected = ref(null),
 const library = ref(null),
   collector = ref(null),
   commerce = ref(null),
+  settingsPage = ref(null),
   bookDetail = ref(null);
 const navigation = [
   { id: "xianyu", name: "闲管家", icon: Store },
   { id: "books", name: "图书", icon: BookOpen },
   { id: "collect", name: "采集", icon: Download },
+  { id: "opencode", name: "OpenCode", icon: Bot },
+  { id: "qoder", name: "Qoder CLI", icon: Bot },
   { id: "settings", name: "设置", icon: Settings },
 ];
 const title = computed(
@@ -49,6 +55,15 @@ function navigate(id) {
   active.value = id;
   visited.value.add(id);
 }
+async function openAgentSettings(provider='opencode') {
+  navigate("settings");
+  await nextTick();
+  settingsPage.value?.showAgents(provider);
+}
+async function openAiSettings(){navigate('settings');await nextTick();settingsPage.value?.showAi();}
+async function aiProgress(id){navigate('collect');await nextTick();await collector.value?.refresh();if(id)await collector.value?.openJob(id);}
+async function aiCreated(job){await aiProgress(job.id);toast.success('AI 任务已创建');}
+async function openAiDraft(id){await openBook(id);await nextTick();bookDetail.value?.showTab('sales');}
 async function bootstrap() {
   loading.value = true;
   error.value = "";
@@ -209,6 +224,7 @@ onMounted(bootstrap);
           <h1>{{ selected ? "图书详情" : title }}</h1>
         </div>
         <button
+          v-if="active !== 'opencode' || !ready"
           class="btn ghost"
           :disabled="loading"
           @click="ready ? refresh() : bootstrap()"
@@ -216,7 +232,7 @@ onMounted(bootstrap);
           <RefreshCw :size="15" />刷新
         </button>
       </header>
-      <main class="studio-content">
+      <main class="studio-content" :class="{ 'opencode-content': active === 'opencode' && !selected }">
         <div v-if="error" class="error-panel" role="alert">
           {{ error }} <button class="btn" @click="bootstrap">重试</button>
         </div>
@@ -224,7 +240,7 @@ onMounted(bootstrap);
           正在连接…
         </div>
         <template v-else>
-          <div v-show="!selected">
+          <div v-show="!selected" :class="{ 'opencode-layout': active === 'opencode' }">
             <XianyuWorkbench
               ref="commerce"
               v-show="active === 'xianyu'"
@@ -241,6 +257,8 @@ onMounted(bootstrap);
               @publish="publishBook = $event"
               @batch="runBatch"
               @collect="navigate('collect')"
+              @ai-created="aiCreated"
+              @ai-settings="openAiSettings"
             />
             <CollectionCenter
               v-if="visited.has('collect')"
@@ -249,6 +267,7 @@ onMounted(bootstrap);
               ref="collector"
               @open-book="openBook"
               @work-item="workItem"
+              @open-draft="openAiDraft"
               @open-schools="
                 navigate('books');
                 nextTick(() => library?.showSchools());
@@ -257,8 +276,19 @@ onMounted(bootstrap);
             <SettingsPage
               v-if="visited.has('settings')"
               v-show="active === 'settings'"
+              ref="settingsPage"
+              :active="active === 'settings'"
               @updated="settingsUpdated"
+              @open-opencode="navigate('opencode')"
+              @open-qoder="navigate('qoder')"
             />
+            <OpenCodePage
+              v-if="visited.has('opencode')"
+              v-show="active === 'opencode'"
+              :active="active === 'opencode'"
+              @settings="openAgentSettings"
+            />
+            <QoderPage v-if="visited.has('qoder')" v-show="active === 'qoder'" :active="active === 'qoder'" @settings="openAgentSettings('qoder')" @ai-settings="openAiSettings" />
           </div>
           <BookDetail
             v-if="selected"
@@ -266,6 +296,8 @@ onMounted(bootstrap);
             ref="bookDetail"
             :book="selected"
             @updated="updated"
+            @ai-settings="openAiSettings"
+            @ai-progress="aiProgress"
             @find-images="findImages(selected)"
             @find-source="findSource(selected)"
             @edit-image="image = $event"

@@ -1083,12 +1083,12 @@ pub fn preview(state: &AppState, book_id: i64) -> Result<Value, ApiError> {
     let book = db::get_book(&conn, book_id)?.ok_or_else(|| ApiError::bad("图书不存在"))?;
     let settings = db::settings(&conn);
     let images = db::images_for_book(&conn, book_id)?;
-    let input = ListingInput {
+    let input = crate::agents::ai::listing_defaults(&conn,book_id,ListingInput {
         title: None,
         description: None,
         price: None,
         condition: None,
-    };
+    })?;
     let (built, _) = listing::build(&book, &settings, &images, &input, &state.base_url());
     Ok(
         json!({"title":built.title,"description":built.description,"price":built.price,"stock":book.stock,"condition":book.condition}),

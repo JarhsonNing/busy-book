@@ -878,6 +878,19 @@ details a {
 .compact-dialog {
   max-width: 520px !important;
 }
+.book-row-actions { display: flex; gap: 8px; white-space: nowrap; }
+.delete-books-dialog { width: 520px; }
+.delete-books-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.delete-books-heading h2 { margin: 0; }
+.delete-books-list { list-style: none; padding: 0; margin: 20px 0 0; max-height: 260px; overflow: auto; }
+.delete-books-list li { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.delete-books-list li:first-child { padding-top: 0; }
+.delete-books-list li:last-child { border-bottom: 0; }
+.delete-books-list strong { font-weight: 600; }
+.delete-books-list span { font-size: 12px; }
+.delete-books-feedback { margin-top: 16px; }
+.btn.delete-confirm { background: var(--danger); color: white; border-color: var(--danger); }
+.btn.delete-confirm:hover:not(:disabled) { background: #963539; border-color: #963539; }
 .modal form > .field {
   margin-bottom: 16px;
 }
@@ -951,6 +964,49 @@ details a {
 .fulfillment-editor {
   margin-top: 24px;
 }
+.agent-settings { max-width: 960px; }
+.ai-settings { max-width: 800px; }
+.ai-auto-options { margin: 0 0 20px 24px; }
+.ai-auto-options .check-line { margin-bottom: 8px; }
+.ai-auto-options p { margin-top: 10px; }
+.ai-generate-dialog { width: 600px; }
+.ai-model-line { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+.ai-prompt textarea.input { margin-top: 12px; }
+.ai-prompt textarea.input, .ai-settings textarea.input, .book-ai-draft textarea.input { height: auto; min-height: 100px; }
+.ai-save-note { margin-top: 18px; }
+.book-ai-draft .module-bar { margin: 0 0 16px; }
+.book-ai-draft { max-width: 900px; margin-bottom: 28px; }
+.book-ai-draft .form-grid { margin-bottom: 16px; }
+.ai-cost { padding: 8px 0; font-variant-numeric: tabular-nums; }
+.ai-analysis { margin: 0 0 16px; }
+.ai-analysis p { margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.studio-content.opencode-content { height: calc(100dvh - 78px); padding: 0; max-width: none; }
+.opencode-layout, .opencode-page { height: 100%; min-height: 0; }
+.opencode-web { position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--paper); }
+.opencode-web-bar { display: flex; flex-shrink: 0; align-items: center; gap: 12px; min-height: 58px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.opencode-web-bar h2 { font-size: 16px; }
+.opencode-web-loading { position: absolute; top: 78px; left: 24px; color: var(--muted); }
+.opencode-web-frame { width: 100%; flex: 1; min-height: 0; border: 0; background: var(--surface); }
+.agent-options { display: flex; gap: 28px; margin-bottom: 14px; }
+.agent-options .check-line { margin: 0; }
+.agent-choice { display: flex; align-items: flex-end; gap: 12px; }
+.agent-choice .field { flex: 1; min-width: 0; margin: 0; }
+.agent-choice > button { flex-shrink: 0; }
+.agent-managed p { margin-top: 10px; }
+.agent-launch { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
+.agent-workspace { margin-top: 16px; }
+.qoder-account { margin-block: 16px; }
+.ai-custom-model { margin-top: 10px; }
+.ai-custom-model > .field { margin-top: 10px; }
+.agent-mcp { border-top: 1px solid var(--line); padding-top: 24px; margin-top: 28px; }
+.agent-mcp .module-bar { gap: 12px; }
+.agent-mcp .module-bar > button { margin-left: auto; }
+.agent-export { align-items: flex-end; margin: 16px 0; }
+.agent-export .field { margin: 0; min-width: 190px; }
+.agent-config summary { cursor: pointer; color: var(--muted); }
+.agent-config pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; background: var(--paper); padding: 14px; }
+.agent-config code { display: block; overflow-wrap: anywhere; font-size: 12px; }
+@media (max-width: 700px) { .agent-choice, .agent-launch { flex-wrap: wrap; } .agent-choice .field { flex-basis: 100%; } }
 .shipment-backdrop { z-index: 1200; }
 .modal-dialog.shipment-dialog { width: 850px; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
 .shipment-dialog h2 { margin: 0; }
@@ -982,6 +1038,7 @@ details a {
   .shipment-status { flex-wrap: wrap; }
 }
 @media (max-width: 1150px) {
+  .studio-content.opencode-content { height: calc(100dvh - 68px); }
   .studio-sidebar {
     width: 144px;
     flex-basis: 144px;

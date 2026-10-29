@@ -21,10 +21,17 @@ pub struct AppState {
     pub bridge_secret: String,
     pub port: u16,
     pub import_ctx: Arc<Mutex<Option<ImportContext>>>,
+    pub opencode_web: Arc<tokio::sync::Mutex<crate::agents::web::Runtime>>,
+    pub qoder_cli: Arc<tokio::sync::Mutex<crate::agents::qoder::Runtime>>,
 }
 
 impl AppState {
     pub fn new(data_dir: PathBuf, port: u16) -> anyhow::Result<Self> {
+        let data_dir = if data_dir.is_absolute() {
+            data_dir
+        } else {
+            std::env::current_dir()?.join(data_dir)
+        };
         fs::create_dir_all(&data_dir)
             .with_context(|| format!("创建数据目录失败: {}", data_dir.display()))?;
         let image_dir = data_dir.join("images");
@@ -34,6 +41,7 @@ impl AppState {
         conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")?;
         crate::commerce::schema::backup(&conn, &data_dir)?;
         db::init(&conn)?;
+        crate::agents::init(&conn)?;
         conn.execute("UPDATE price_searches SET data=json_set(data,'$.state','waiting','$.error','应用已重启，请继续检索') WHERE json_extract(data,'$.state')='searching'", [])?;
         conn.execute(
             "UPDATE collection_jobs SET state='queued',stage='恢复任务' WHERE state='running'",
@@ -60,6 +68,8 @@ impl AppState {
             bridge_secret: random_secret(24),
             port,
             import_ctx: Arc::new(Mutex::new(None)),
+            opencode_web: Arc::new(tokio::sync::Mutex::new(Default::default())),
+            qoder_cli: Arc::new(tokio::sync::Mutex::new(Default::default())),
         })
     }
 

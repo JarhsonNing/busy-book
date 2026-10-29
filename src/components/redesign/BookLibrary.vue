@@ -10,13 +10,21 @@ import {
 import { Search, Plus, BookOpen } from "@lucide/vue";
 import { api, assetUrl } from "../../api";
 import SchoolBooks from "./SchoolBooks.vue";
-const emit = defineEmits(["open-book", "publish", "batch", "collect"]);
+import DeleteBooksDialog from "./DeleteBooksDialog.vue";
+import AiGenerateDialog from "./AiGenerateDialog.vue";
+const emit = defineEmits(["open-book", "publish", "batch", "collect", "ai-created", "ai-settings"]);
 const view = ref("books"),
   schoolView = ref(null),
   loading = ref(false),
   error = ref(""),
   data = ref({ items: [], total: 0, schools: [], years: [] }),
   selected = ref(new Set());
+const deleteIds = ref(null);
+const aiIds = ref(null);
+async function deleted() {
+  await refresh();
+  schoolView.value?.refresh();
+}
 const filter = reactive({
   q: "",
   school: "",
@@ -91,7 +99,7 @@ function showSchools() {
   view.value = "schools";
   schoolView.value?.refresh();
 }
-defineExpose({ refresh, showSchools });
+defineExpose({ refresh: deleted, showSchools });
 onMounted(refresh);
 onBeforeUnmount(() => {
   clearTimeout(timer);
@@ -160,6 +168,8 @@ const money = (v) => (v == null ? "—" : `¥${Number(v).toFixed(2)}`);
         ><button class="btn small" @click="batch('sources')">找货源</button
         ><button class="btn small" @click="batch('images')">补图片</button
         ><button class="btn small" @click="batch('publish')">准备发布</button
+        ><button class="btn small" @click="aiIds=[...selected]">AI 完善</button
+        ><button class="btn small danger" @click="deleteIds = [...selected]">删除</button
         ><button class="link-btn" @click="selected.clear()">取消选择</button>
       </div>
       <p v-if="error" role="alert" class="error-panel">
@@ -243,9 +253,12 @@ const money = (v) => (v == null ? "—" : `¥${Number(v).toFixed(2)}`);
               </td>
               <td>{{ b.channelCount || 0 }}</td>
               <td>
+                <div class="book-row-actions">
                 <button class="btn small" @click="$emit('publish', b)">
                   发布
                 </button>
+                <button class="btn small" :class="{ danger: b.canDelete }" :title="b.deleteReason || '删除图书'" :aria-label="b.canDelete ? '删除 ' + b.title : '查看不可删除原因：' + b.title + '，' + b.deleteReason" @click="deleteIds = [b.id]">{{ b.canDelete ? '删除' : '不可删除' }}</button>
+                </div>
               </td>
             </tr>
             <tr v-if="!data.items.length">
@@ -283,5 +296,7 @@ const money = (v) => (v == null ? "—" : `¥${Number(v).toFixed(2)}`);
         </div>
       </footer>
     </div>
+    <DeleteBooksDialog v-if="deleteIds" :ids="deleteIds" @close="deleteIds = null" @deleted="deleted" />
+    <AiGenerateDialog v-if="aiIds" :ids="aiIds" @close="aiIds=null" @created="$emit('ai-created',$event)" @settings="$emit('ai-settings')" />
   </section>
 </template>

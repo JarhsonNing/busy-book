@@ -1,6 +1,7 @@
 <script setup>
 import {
   computed,
+  nextTick,
   onMounted,
   onBeforeUnmount,
   reactive,
@@ -9,8 +10,9 @@ import {
 } from "vue";
 import { api } from "../../api";
 const props = defineProps({ active: Boolean });
-const emit = defineEmits(["open-book", "work-item", "open-schools"]);
+const emit = defineEmits(["open-book", "work-item", "open-schools", "open-draft"]);
 const jobs = ref([]),
+  detailElement = ref(null),
   adapters = ref([]),
   selected = ref(null),
   creating = ref(false),
@@ -114,6 +116,8 @@ async function control(j, action, body = {}) {
     busy.value = false;
   }
 }
+async function selectJob(job){selected.value=job;await nextTick();detailElement.value?.scrollIntoView({block:'start'});}
+async function openJob(id){try{await selectJob(await api.commerce('/jobs/'+id));}catch(e){error.value=e.message;}}
 function tick() {
   clearInterval(timer);
   if (props.active) {
@@ -129,7 +133,7 @@ onBeforeUnmount(() => {
   clearInterval(timer);
   run++;
 });
-defineExpose({ refresh });
+defineExpose({ refresh, openJob });
 const time = (v) =>
   new Date(v).toLocaleString("zh-CN", {
     month: "2-digit",
@@ -175,7 +179,7 @@ const time = (v) =>
         <tbody>
           <tr v-for="j in visible" :key="j.id">
             <td>
-              <button class="text-button" @click="selected = j">
+              <button class="text-button" @click="selectJob(j)">
                 {{ j.title }}
               </button>
             </td>
@@ -189,7 +193,7 @@ const time = (v) =>
                 j.result?.items?.filter((i) => i.state === "done").length ??
                 "—"
               }}
-              / {{ j.result?.errors?.length ?? (j.state === "failed" ? 1 : 0) }}
+              / {{ j.result?.errors?.length ?? j.result?.items?.filter(i=>i.state==='failed').length ?? (j.state === "failed" ? 1 : 0) }}
             </td>
             <td>
               <span
@@ -206,7 +210,7 @@ const time = (v) =>
             </td>
             <td class="muted">{{ time(j.updatedAt) }}</td>
             <td>
-              <button class="btn small" @click="selected = j">查看</button>
+              <button class="btn small" @click="selectJob(j)">查看</button>
             </td>
           </tr>
           <tr v-if="!visible.length">
@@ -215,7 +219,7 @@ const time = (v) =>
         </tbody>
       </table>
     </div>
-    <section v-if="selected" class="task-detail">
+    <section v-if="selected" ref="detailElement" class="task-detail">
       <header class="module-bar">
         <h2>{{ selected.title }}</h2>
         <button class="btn small" @click="selected = null">收起</button>
@@ -223,6 +227,7 @@ const time = (v) =>
       <div class="row">
         <span class="tag">{{ labels[selected.state] }}</span
         ><span>{{ selected.stage }}</span>
+        <span v-if="selected.kind==='ai'" class="muted">{{ selected.request.provider==='qoder'?'Qoder CLI':'OpenCode' }} · {{ selected.request.model || '默认模型' }}</span>
         <div class="push-right row">
           <button
             v-if="['queued', 'running', 'waiting'].includes(selected.state)"
@@ -271,10 +276,11 @@ const time = (v) =>
                 {{ item.title }}
               </button>
             </td>
-            <td>{{ item.state === "done" ? "已完成" : "待处理" }}</td>
+            <td>{{ item.state === 'done' ? (selected.kind==='ai'?'草稿已保存':'已完成') : item.state==='failed'?'失败':'待处理' }}<small v-if="item.error" class="danger">{{ item.error }}</small></td>
             <td class="row">
+              <button v-if="selected.kind==='ai' && item.state==='done'" class="btn small" @click="$emit('open-draft',item.bookId)">查看草稿</button>
               <button
-                v-if="item.state !== 'done'"
+                v-if="item.state !== 'done' && selected.kind!=='ai'"
                 class="btn small"
                 :disabled="selected.state !== 'waiting'"
                 @click="$emit('work-item', selected.kind, item)"
@@ -285,7 +291,7 @@ const time = (v) =>
                   ]
                 }}</button
               ><button
-                v-if="item.state !== 'done'"
+                v-if="item.state !== 'done' && selected.kind!=='ai'"
                 class="btn small"
                 :disabled="busy || selected.state !== 'waiting'"
                 @click="
