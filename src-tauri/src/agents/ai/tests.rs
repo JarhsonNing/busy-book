@@ -1,5 +1,45 @@
 use super::*;
 use crate::models::{BookPatch, ListingInput};
+
+fn comparison(ids: &[i64]) -> Value {
+    json!({"analysis":"先核实规格与运费，再选择支持代发的同版本货源。","recommendedSourceId":ids.first(),"backupSourceIds":[],
+        "sources":ids.iter().map(|id|json!({"sourceId":id,"versionMatch":"unknown","reason":"ISBN 与册次尚待核实","risks":["运费以实际收件地核实"]})).collect::<Vec<_>>()})
+}
+#[test]
+fn source_comparisons_preserve_sale_drafts_prices_and_selection_and_detect_changes() {
+    let c = conn(); let id = book(&c);
+    let sid = source(&c,id,9.0,None,false);
+    let other = source(&c,id,11.0,Some(2.0),true);
+    c.execute("INSERT INTO book_ai_drafts(book_id,data) VALUES(?,?)",params![id,r#"{"title":"人工销售草稿","revision":"keep"}"#]).unwrap();
+    let ctx = context(&c,id).unwrap();
+    let req = request(&c,&json!({"task":"sources"})).unwrap();
+    let expected = source_analysis::basis(&ctx);
+    let saved = apply(&c,id,45,&req,&ctx,&expected,&comparison(&[sid,other])).unwrap();
+    assert_eq!(saved["recommendedSourceId"],sid);
+    assert_eq!(source_analysis::read(&c,id).unwrap()["report"]["stale"],false);
+    assert_eq!(draft_data(&c,id).unwrap()["revision"],"keep");
+    assert_eq!(db::get_book(&c,id).unwrap().unwrap().sell_price,Some(20.0));
+    assert_eq!(db::get_book(&c,id).unwrap().unwrap().cost_price,Some(8.0));
+    assert_eq!(c.query_row("SELECT is_primary FROM book_sources WHERE id=?",[sid],|r|r.get::<_,bool>(0)).unwrap(),false);
+    assert_eq!(c.query_row("SELECT is_primary FROM book_sources WHERE id=?",[other],|r|r.get::<_,bool>(0)).unwrap(),true);
+    c.execute("UPDATE book_sources SET data=json_set(data,'$.freight',4) WHERE id=?",[sid]).unwrap();
+    assert_eq!(source_analysis::read(&c,id).unwrap()["report"]["stale"],true);
+    assert!(apply(&c,id,46,&req,&ctx,&expected,&comparison(&[sid,other])).unwrap_err().contains("变化"));
+    assert_eq!(source_analysis::read(&c,id).unwrap()["report"]["jobId"],45);
+}
+#[test]
+fn source_comparisons_reject_hallucinated_incomplete_and_ineligible_recommendations() {
+    let c = conn(); let id = book(&c); let sid = source(&c,id,9.0,None,false);
+    let ctx = context(&c,id).unwrap(); let req = request(&c,&json!({"task":"sources"})).unwrap();
+    let save = |v:&Value| source_analysis::save(&c,id,1,&req,&ctx,v);
+    assert!(save(&comparison(&[99999])).is_err());
+    let mut invalid=comparison(&[sid]); invalid["sources"]=json!([]); assert!(save(&invalid).is_err());
+    invalid=comparison(&[sid]); invalid["sources"][0]["versionMatch"]=json!("mismatch"); assert!(save(&invalid).is_err());
+    invalid["recommendedSourceId"]=Value::Null; assert!(save(&invalid).is_ok());
+    invalid=comparison(&[sid]); invalid["backupSourceIds"]=json!([sid]); assert!(save(&invalid).is_err());
+    let mut no_recommendation=comparison(&[sid]); no_recommendation["recommendedSourceId"]=Value::Null;
+    assert!(save(&no_recommendation).is_ok());
+}
 fn conn() -> Connection {
     let c = Connection::open_in_memory().unwrap();
     c.execute_batch("PRAGMA foreign_keys=ON").unwrap();

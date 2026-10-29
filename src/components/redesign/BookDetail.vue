@@ -262,6 +262,8 @@ onMounted(refresh);
       :book-id="book.id"
       section="sources"
       @updated="businessUpdated"
+      @ai-settings="$emit('ai-settings')"
+      @ai-progress="$emit('ai-progress', $event)"
     />
     <section v-if="tab === 'images'">
       <div class="module-bar">

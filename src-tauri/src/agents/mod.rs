@@ -26,6 +26,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+mod source_analysis;
 const SKILL: &str = include_str!("../../../agent-skills/taoshu-import/SKILL.md");
 const WORKFLOW_SKILL: &str = include_str!("../../../agent-skills/taoshu-workflow/SKILL.md");
 pub fn router() -> Router<AppState> {
@@ -60,6 +61,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/agents/ai/models", get(ai::models))
         .route("/api/agents/ai/command", post(ai::cli_command))
         .route("/api/agents/ai/books/{id}/draft", get(ai::get_draft).post(ai::save_draft))
+        .route("/api/agents/ai/books/{id}/sources", get(source_analysis::get))
 }
 pub fn init(c: &rusqlite::Connection) -> anyhow::Result<()> {
     c.execute_batch("CREATE TABLE IF NOT EXISTS agent_isbn_cache(cache_key TEXT PRIMARY KEY,data TEXT NOT NULL,expires_at INTEGER NOT NULL,updated_at TEXT NOT NULL);")?;

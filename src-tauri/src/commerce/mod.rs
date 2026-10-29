@@ -7,6 +7,7 @@ pub mod jobs;
 mod library;
 mod book_search;
 pub(crate) mod price_search;
+mod source_links;
 pub mod schema;
 #[cfg(test)]
 mod tests;
@@ -37,6 +38,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/commerce/books/{id}/price-search", get(price_search::status).post(price_search::control))
         .route("/api/commerce/books/{id}/profile", post(save_profile))
         .route("/api/commerce/sources", get(sources).post(save_source))
+        .route("/api/commerce/books/{id}/source-links", post(source_links::import))
         .route("/api/commerce/books/{id}/resources", post(add_resource))
         .route("/api/commerce/resources/{id}/state", post(resource_state))
         .route("/api/commerce/channels", post(save_channel))
@@ -295,6 +297,9 @@ async fn save_source(
     if primary && bid.is_none() {
         return Err(ApiError::bad("先关联图书再设主选货源"));
     }
+    if primary && text(d,"status") != "available" {
+        return Err(ApiError::bad("设为主选前，请核对规格和采购价、勾选本次已核验，并将货源状态设为可用"));
+    }
     if primary {
         tx.execute(
             "UPDATE book_sources SET is_primary=0 WHERE book_id=?",
@@ -339,6 +344,10 @@ pub fn attach_capture_candidate(conn: &Connection, capture: &crate::models::Capt
     let existing: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM book_sources WHERE book_id=? AND (capture_id=? OR json_extract(data,'$.originCaptureId')=?))",
         params![book_id,capture.id,capture.id],|r|r.get(0))?;
     if existing { return Ok(()); }
+    if source_links::enrich(conn,book_id,&json!({"url":capture.url,"title":capture.title,"shop":capture.shop,"price":capture.price}))? {
+        crate::agents::ai::auto_queue(conn,book_id,"source")?;
+        return Ok(());
+    }
     if conn.execute("UPDATE book_sources SET book_id=? WHERE capture_id=? AND book_id IS NULL",params![book_id,capture.id])? == 0 {
         let data = json!({"url":capture.url,"title":capture.title,"shop":capture.shop,"price":capture.price,"freight":null,"sku":"","condition":"","status":"pending","dropship":false,"checkedAt":"","origin":"capture","originCaptureId":capture.id});
         conn.execute("INSERT INTO book_sources(book_id,data,updated_at) VALUES(?,?,?)",params![book_id,data.to_string(),db::now()])?;

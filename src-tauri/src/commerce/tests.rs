@@ -3,6 +3,70 @@ use crate::models::{BookPatch, CaptureInput};
 use std::{fs, path::PathBuf};
 
 #[tokio::test]
+async fn primary_source_requires_verified_details_before_selection_changes() {
+    let f=Fixture::new(); let bid=f.book("确认主选货源");
+    let mut input=json!({"bookId":bid,"primary":true,"data":{"url":"https://item.taobao.com/item.htm?id=12","status":"pending","price":12,"freight":null,"dropship":false}});
+    assert!(save_source(State(f.state.clone()),Json(input.clone())).await.is_err());
+    assert!(source_list(&lock(&f.state),Some(bid)).unwrap().is_empty());
+    input["data"]["status"]=json!("available");
+    assert!(save_source(State(f.state.clone()),Json(input.clone())).await.is_err());
+    input["data"]["sku"]=json!("第5版 上册"); input["data"]["checkedAt"]=json!(db::now());
+    let saved=save_source(State(f.state.clone()),Json(input.clone())).await.unwrap().0;
+    input["id"]=saved["id"].clone(); input["data"]["status"]=json!("pending");
+    assert!(save_source(State(f.state.clone()),Json(input)).await.is_err());
+    assert_eq!(source_list(&lock(&f.state),Some(bid)).unwrap()[0]["primary"],true);
+    assert_eq!(source_list(&lock(&f.state),Some(bid)).unwrap()[0]["data"]["status"],"available");
+}
+
+#[tokio::test]
+async fn source_links_are_atomic_deduplicated_and_enriched_without_overwriting_reviewed_data() {
+    let f = Fixture::new(); let bid = f.book("货源整理测试");
+    let import = |urls:Value| source_links::import(State(f.state.clone()),Path(bid),Json(json!({"urls":urls})));
+    assert!(import(json!(["https://item.taobao.com/item.htm?id=123","https://example.com/?id=1"])).await.is_err());
+    assert!(source_list(&lock(&f.state),Some(bid)).unwrap().is_empty());
+    let first=import(json!(["https://item.taobao.com/item.htm?id=123&spm=tracking","https://item.taobao.com/item.htm?id=123"])).await.unwrap().0;
+    assert_eq!(first["added"],1); assert_eq!(first["existing"],1);
+    let sources=source_list(&lock(&f.state),Some(bid)).unwrap(); let sid=sources[0]["id"].as_i64().unwrap();
+    assert_eq!(sources[0]["data"]["price"],Value::Null); assert_eq!(sources[0]["data"]["condition"],"");
+    assert_eq!(sources[0]["data"]["status"],"pending"); assert_eq!(sources[0]["primary"],false);
+    let mut item=json!({"url":"https://item.taobao.com/item.htm?id=123","title":"第5版上册","shop":"测试店铺","price":12});
+    assert!(source_links::enrich(&lock(&f.state),bid,&item).unwrap());
+    let capture:CaptureInput=serde_json::from_value(json!({"url":item["url"],"itemId":"123","title":item["title"],"price":12,"asSource":true,"sourceBookId":bid})).unwrap();
+    let c=lock(&f.state); let (capture,_,_)=db::upsert_capture(&c,&capture,0.3,5.0,"九成新").unwrap();
+    capture_candidate(&c,&capture).unwrap(); attach_capture_candidate(&c,&capture,bid).unwrap();
+    assert_eq!(source_list(&c,Some(bid)).unwrap().len(),1);
+    c.execute("UPDATE book_sources SET data=json_set(data,'$.price',10,'$.status','available','$.checkedAt','checked') WHERE id=?",[sid]).unwrap();
+    item["price"]=json!(1); source_links::enrich(&c,bid,&item).unwrap();
+    assert_eq!(source_list(&c,Some(bid)).unwrap()[0]["data"]["price"],10);
+}
+
+#[tokio::test]
+async fn source_search_freezes_ai_configuration_and_queues_exactly_once_after_collection() {
+    let f=Fixture::new(); let bid=f.book("单本书货源流程");
+    let program=f.path.join("model-fixture"); fs::write(&program,[]).unwrap();
+    { let c=lock(&f.state); db::set_setting(&c,"agentOpenCode",&json!({"mode":"local","path":program})).unwrap(); }
+    let call=|body:Value|price_search::control(State(f.state.clone()),Path(bid),Json(body));
+    let first=call(json!({"action":"start","ai":{"provider":"opencode","model":"fixture/source-model","prompt":"只比较单本书货源"}})).await.unwrap().0;
+    let request_id=first["requestId"].clone();
+    let item=json!({"url":"https://item.taobao.com/item.htm?id=456","title":"同版本候选","price":12});
+    let _ = call(json!({"action":"batch","requestId":request_id,"batch":1,"items":[item]})).await.unwrap();
+    assert_eq!(lock(&f.state).query_row("SELECT count(*) FROM collection_jobs WHERE kind='ai'",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    // The staged request survives a restart and does not use newly saved defaults.
+    let restarted=AppState::new(f.path.clone(),0).unwrap(); drop(restarted);
+    let _ = call(json!({"action":"resume","requestId":request_id})).await.unwrap();
+    let done=call(json!({"action":"finish","requestId":request_id,"reason":"visible-end"})).await.unwrap().0;
+    assert!(done["analysisJobId"].as_i64().is_some());
+    let duplicate=call(json!({"action":"finish","requestId":request_id,"reason":"visible-end"})).await.unwrap().0;
+    assert_eq!(done["analysisJobId"],duplicate["analysisJobId"]);
+    let c=lock(&f.state);
+    let req:String=c.query_row("SELECT request FROM collection_jobs WHERE id=?",[done["analysisJobId"].as_i64().unwrap()],|r|r.get(0)).unwrap();
+    let req:Value=serde_json::from_str(&req).unwrap();
+    assert_eq!(req["task"],"sources"); assert_eq!(req["model"],"fixture/source-model"); assert_eq!(req["prompt"],"只比较单本书货源");
+    assert_eq!(c.query_row("SELECT count(*) FROM collection_jobs WHERE kind='ai'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    assert_eq!(c.query_row("SELECT count(*) FROM book_sources WHERE is_primary=1",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+}
+
+#[tokio::test]
 async fn manual_shipping_needs_no_purchase_and_preserves_local_tracking_across_sync() {
     let f=Fixture::new();let o=order("manual-ship","unmapped");f.observe(&o);
     let id=f.orders()[0]["id"].as_i64().unwrap();

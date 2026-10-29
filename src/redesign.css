@@ -1260,6 +1260,36 @@ details a {
 .price-comparison-table td:first-child { max-width: 340px; overflow-wrap: anywhere; }
 .price-comparison-table td:last-child { white-space: nowrap; }
 .price-comparison-scope { margin-top: 12px; }
+.source-ai { margin-bottom: 24px; }
+.source-ai .module-bar { gap: 12px; flex-wrap: wrap; }
+.source-ai-actions { flex-wrap: wrap; }
+.source-links-form { margin: 16px 0; max-width: 760px; }
+.source-links-form .field { margin-bottom: 12px; }
+.source-ai-conclusion { padding: 16px 0; border-top: 1px solid var(--line); }
+.source-ai-conclusion p { margin: 8px 0; max-width: 75ch; white-space: pre-wrap; overflow-wrap: anywhere; }
+.source-ai-table { overflow-x: auto; }
+.source-ai-table table { min-width: 720px; table-layout: fixed; }
+.source-ai-table th:first-child { width: 28%; }
+.source-ai-table th:nth-child(2) { width: 17%; }
+.source-ai-table th:nth-child(3) { width: 39%; }
+.source-ai-table th:last-child { width: 16%; }
+.source-ai-table td { vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+.source-ai-table td:first-child .row { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.source-ai-table td p { margin: 0 0 8px; white-space: pre-wrap; }
+.source-ai-table td small { display: block; margin-top: 5px; }
+.source-ai-table td:nth-child(2) { font-variant-numeric: tabular-nums; }
+.source-ai-risks { margin: 0 0 8px; padding-left: 16px; font-size: 12px; color: var(--muted); }
+.source-ai-row-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.source-ai-row-actions button { white-space: normal; text-align: left; }
+.source-ai-empty { margin: 8px 0 16px; }
+.source-ai-scroll-note { display: none; }
+.source-records-bar { padding-top: 20px; border-top: 1px solid var(--line); flex-wrap: wrap; gap: 12px; }
+@media (max-width: 800px) {
+  .source-ai .module-bar { align-items: flex-start; }
+  .source-ai-actions { width: 100%; gap: 8px; }
+  .source-ai-scroll-note { display: block; margin: 12px 0 8px; }
+  .source-records-bar > .row { flex-wrap: wrap; }
+}
 .source-editor-header {
   display: flex;
   justify-content: space-between;

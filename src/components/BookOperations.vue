@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue";
 import { api, openBrowser, taobaoSourceUrl } from "../api";
+import BookSourceAi from "./redesign/BookSourceAi.vue";
 import {
   emptySource,
   showTime,
@@ -11,7 +12,8 @@ const props = defineProps({
   bookId: Number,
   section: { type: String, default: "sources" },
 });
-const emit = defineEmits(["updated", "open-fulfillment"]);
+const emit = defineEmits(["updated", "open-fulfillment", "ai-settings", "ai-progress"]);
+const sourceAi = ref(null);
 const data = ref(null),
   tab = ref("sources"),
   busy = ref(false),
@@ -80,7 +82,7 @@ async function priceAction(action) {
   priceBusy.value = true; priceError.value = '';
   const id = props.bookId;
   try {
-    const result = await api.commerce(`/books/${id}/price-search`, {action,requestId:priceRun.value?.requestId});
+    const result = await api.commerce(`/books/${id}/price-search`, {action,requestId:priceRun.value?.requestId,analyze:action==='cancel' && !!priceRun.value?.aiRequest && priceRun.value?.count>0});
     if (id !== props.bookId) return;
     priceRun.value = result;
     if (action==='start' || action==='resume') await openBrowser('taobao',result.searchUrl);
@@ -88,6 +90,12 @@ async function priceAction(action) {
     await load();
   } catch (e) { priceError.value = e.message; }
   finally { priceBusy.value = false; }
+}
+async function aiSearchStarted(result) {
+  priceRun.value = result;
+  try { await openBrowser('taobao', result.searchUrl); }
+  catch (e) { priceError.value = e.message; }
+  await loadPrice();
 }
 async function refreshSources() {
   if (tab.value !== 'sources') return;
@@ -100,6 +108,13 @@ async function searchTaobao() {
   error.value = '';
   try { await openBrowser('taobao', taobaoSourceUrl(data.value)); }
   catch (e) { error.value = e.message; }
+}
+async function openSource(url) {
+  try {
+    const target = new URL(url);
+    target.searchParams.set('taoshuSourceBook', String(props.bookId));
+    await openBrowser('taobao', target.href);
+  } catch (e) { error.value = e.message; }
 }
 onMounted(() => window.addEventListener('focus', refreshSources));
 onBeforeUnmount(() => { window.removeEventListener('focus', refreshSources); clearTimeout(priceTimer); priceVersion++; });
@@ -146,6 +161,7 @@ async function load() {
     const result = await api.commerce("/books/" + props.bookId);
     if (run !== version) return;
     data.value = result;
+    await sourceAi.value?.refresh();
     Object.assign(
       profile,
       { publicationYear: "", volume: "", confirmed: false },
@@ -234,11 +250,11 @@ async function saveSource() {
     message.value = "货源已保存";
   });
 }
-function editSource(s = null) {
+function editSource(s = null, primary = false) {
   error.value = "";
   message.value = "";
   source.id = s?.id ?? null;
-  source.primary = !!s?.primary;
+  source.primary = primary || !!s?.primary;
   source.data = { ...emptySource(), ...s?.data };
   sourceDialog.value = true;
 }
@@ -408,7 +424,9 @@ async function saveMap() {
         </article>
       </div>
       <div v-if="tab === 'sources'">
-        <UiButton class="btn primary" :disabled="priceBusy || priceRun?.state==='searching'" @click="priceAction('start')">{{ priceBusy ? '处理中…' : '一键找最低价' }}</UiButton>
+        <BookSourceAi ref="sourceAi" :book-id="bookId" :search="priceRun" @updated="refreshSources" @edit-source="editSource" @add-source="editSource()" @search-started="aiSearchStarted" @settings="emit('ai-settings')" @progress="emit('ai-progress',$event)" />
+        <div class="module-bar source-records-bar"><h3>货源资料</h3><div class="row">
+        <UiButton class="btn small" :disabled="priceBusy || ['searching','waiting'].includes(priceRun?.state)" @click="priceAction('start')">{{ priceBusy ? '处理中…' : '仅搜索比价' }}</UiButton>
         <UiButton
           class="btn ghost"
           @click="searchTaobao"
@@ -416,7 +434,7 @@ async function saveMap() {
           淘宝找货源
         </UiButton>
         <UiButton class="btn ghost" @click="refreshSources">刷新货源</UiButton>
-        <UiButton class="btn" @click="editSource()">新增货源</UiButton>
+        </div></div>
         <p v-if="priceError" class="error-panel" role="alert">{{ priceError }}</p>
         <p v-if="priceRefreshError" class="error-panel" role="alert">{{ priceRefreshError }}</p>
         <section v-if="priceRun && priceRun.state!=='idle'" class="price-comparison">
@@ -424,7 +442,7 @@ async function saveMap() {
             <div class="row"><strong>{{ priceStates[priceRun.state] }}</strong><span class="muted">{{ priceRun.count }} 个候选 · 滚动采集</span></div>
             <div class="row">
               <UiButton v-if="priceRun.state==='waiting'" class="btn small" :disabled="priceBusy" @click="priceAction('resume')">继续检索</UiButton>
-              <UiButton v-if="['searching','waiting'].includes(priceRun.state)" class="btn ghost small" :disabled="priceBusy" @click="priceAction('cancel')">停止</UiButton>
+              <UiButton v-if="['searching','waiting'].includes(priceRun.state)" class="btn ghost small" :disabled="priceBusy" @click="priceAction('cancel')">{{ priceRun.aiRequest && priceRun.count ? '停止并整理' : '停止' }}</UiButton>
               <UiButton class="btn ghost small" @click="loadPrice">刷新比价</UiButton>
             </div>
           </div>
@@ -440,7 +458,7 @@ async function saveMap() {
                 <td><strong>{{ row.title || row.source.data.title }}</strong><small>{{ row.source.data.shop || '店铺待核对' }} · {{ row.source.data.sku || '规格待核对' }}</small></td>
                 <td class="numeric">{{ yuan(row.displayPrice) }}<small v-if="row.priceLabel">{{ row.priceLabel }}</small></td><td class="numeric">{{ yuan(row.total) }}</td>
                 <td><span class="tag" :class="row.total==null?'warning':'success'">{{ row.reason }}</span><small v-if="row.total!=null">{{ showTime(row.source.data.checkedAt) }}</small></td>
-                <td><UiButton class="btn small" @click="editSource(row.source)">{{ row.total==null?'核对':'编辑' }}</UiButton> <UiButton class="btn ghost small" @click="openBrowser('taobao',row.source.data.url)">商品</UiButton></td>
+                <td><UiButton class="btn small" @click="editSource(row.source)">{{ row.total==null?'核对':'编辑' }}</UiButton> <UiButton class="btn ghost small" @click="openSource(row.source.data.url)">采集详情</UiButton></td>
               </tr></tbody>
             </table>
           </div>
@@ -483,8 +501,8 @@ async function saveMap() {
             <UiButton class="link-btn" @click="editSource(s)">编辑</UiButton
             ><UiButton
               class="link-btn"
-              @click="openBrowser('taobao', s.data.url)"
-              >打开货源</UiButton
+              @click="openSource(s.data.url)"
+              >打开商品采集</UiButton
             >
           </div>
         </article>

@@ -63,7 +63,7 @@ async function openAgentSettings(provider='opencode') {
 async function openAiSettings(){navigate('settings');await nextTick();settingsPage.value?.showAi();}
 async function aiProgress(id){navigate('collect');await nextTick();await collector.value?.refresh();if(id)await collector.value?.openJob(id);}
 async function aiCreated(job){await aiProgress(job.id);toast.success('AI 任务已创建');}
-async function openAiDraft(id){await openBook(id);await nextTick();bookDetail.value?.showTab('sales');}
+async function openAiDraft(id,task){await openBook(id);await nextTick();bookDetail.value?.showTab(task==='sources'?'sources':'sales');}
 async function bootstrap() {
   loading.value = true;
   error.value = "";

@@ -51,6 +51,7 @@ export const api = {
   saveAiConfig: (body) => request('/api/agents/ai/config', {method:'POST',body}),
   aiModels: (provider) => request('/api/agents/ai/models'+(provider?'?provider='+encodeURIComponent(provider):'')),
   aiDraft: (id) => request(`/api/agents/ai/books/${id}/draft`),
+  sourceAnalysis: (id) => request(`/api/agents/ai/books/${id}/sources`),
   saveAiDraft: (id,body) => request(`/api/agents/ai/books/${id}/draft`,{method:'POST',body}),
   aiCommand: (bookId,task,prompt,options={}) => request('/api/agents/ai/command',{method:'POST',body:{bookId,task,prompt,...options}}),
   agentStatus: () => request('/api/agents/opencode'),

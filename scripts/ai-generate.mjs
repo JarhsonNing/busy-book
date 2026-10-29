@@ -5,14 +5,14 @@ import {fileURLToPath} from 'node:url';
 const args=process.argv.slice(2);
 const option=name=>{const n=args.indexOf(name);return n<0?undefined:args[n+1];};
 if(args.includes('--help')){
-  console.log('node ai-generate.mjs --book 1,2 --task complete|pricing|copy|text [--provider opencode|qoder] [--prompt "提示词"] [--model MODEL] [--text] [--no-wait] [--config connection.json]');
+  console.log('node ai-generate.mjs --book 1,2 --task complete|pricing|copy|text|sources [--provider opencode|qoder] [--prompt "提示词"] [--model MODEL] [--text] [--no-wait] [--config connection.json]');
   process.exit(0);
 }
 try{
   const ids=[...new Set((option('--book')||'').split(',').map(Number))];
   if(!ids.length || ids.length>100 || ids.some(id=>!Number.isSafeInteger(id)||id<=0))throw Error('通过 --book 指定 1–100 个有效图书编号');
   const task=option('--task')||'complete';
-  if(!['complete','pricing','copy','text'].includes(task))throw Error('未知任务类型');
+  if(!['complete','pricing','copy','text','sources'].includes(task))throw Error('未知任务类型');
   const config=JSON.parse(await fs.readFile(option('--config')||path.join(path.dirname(fileURLToPath(import.meta.url)),'connection.json'),'utf8'));
   const url=new URL(config.url);
   if(url.protocol!=='http:' || !['localhost','127.0.0.1'].includes(url.hostname) || url.pathname!=='/mcp')throw Error('接入配置须指向本地淘书工坊 MCP');
@@ -33,7 +33,7 @@ try{
   if(args.includes('--text')){
     for(const item of job.result?.items||[]){
       if(ids.length>1)console.log(item.title);
-      if(item.state==='done')console.log(task==='text'?item.draft.text:task==='pricing'?item.draft.analysis:[item.draft.title,item.draft.description].filter(Boolean).join('\n\n'));
+      if(item.state==='done')console.log(task==='text'?item.draft.text:['pricing','sources'].includes(task)?item.draft.analysis:[item.draft.title,item.draft.description].filter(Boolean).join('\n\n'));
       else console.error(item.error||'生成失败');
     }
   }else console.log(JSON.stringify(job,null,2));

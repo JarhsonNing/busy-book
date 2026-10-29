@@ -60,7 +60,7 @@ pub(super) fn tools() -> Vec<Value> {
     );
     let mut lookup=tool("taoshu_lookup_isbn","按书名从豆瓣建议接口查询版本候选，并提取详情页 ISBN；可指定数字 subjectId，结果不自动写入书库。带缓存及限频，受限时返回准确状态。",schema(json!({"query":string(),"subjectId":string()}),&[]),true);
     lookup["annotations"]["openWorldHint"] = json!(true);
-    let mut generate=tool("taoshu_generate_draft","使用已配置的 OpenCode 或 Qoder CLI 模型分析货源、定价或生成文案/自定义文本，自动写入本地草稿；不确认主选货源、不发布。start 返回任务 ID，status 查询结果。可能消耗所选模型额度。",schema(json!({"action":{"type":"string","enum":["start","status"]},"bookIds":{"type":"array","items":{"type":"integer","minimum":1},"minItems":1,"maxItems":100},"task":{"type":"string","enum":["complete","pricing","copy","text"]},"provider":{"type":"string","enum":["opencode","qoder"]},"prompt":string(),"model":string(),"jobId":{"type":"integer","minimum":1}}),&["action"]),false);
+    let mut generate=tool("taoshu_generate_draft","使用已配置的 OpenCode 或 Qoder CLI 模型分析货源、定价或生成文案/自定义文本，自动写入本地草稿；不确认主选货源、不发布。start 返回任务 ID，status 查询结果。可能消耗所选模型额度。",schema(json!({"action":{"type":"string","enum":["start","status"]},"bookIds":{"type":"array","items":{"type":"integer","minimum":1},"minItems":1,"maxItems":100},"task":{"type":"string","enum":["complete","pricing","copy","text","sources"]},"provider":{"type":"string","enum":["opencode","qoder"]},"prompt":string(),"model":string(),"jobId":{"type":"integer","minimum":1}}),&["action"]),false);
     generate["annotations"]["idempotentHint"]=json!(false);generate["annotations"]["openWorldHint"]=json!(true);
     vec![
         tool("taoshu_context","查询淘书工坊导入约定与可用能力，不包含订单或凭据。",schema(json!({}),&[]),true),

@@ -162,6 +162,10 @@ pub(super) async fn control(
     Path(bid): Path<i64>,
     Json(input): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    let ai_request = if input["action"] == "start" && !input["ai"].is_null() {
+        if !input["ai"].is_object() { return Err(ApiError::bad("AI 整理配置无效")); }
+        Some(crate::agents::ai::source_search_request(&s, &input["ai"])?)
+    } else { None };
     let mut c = lock(&s);
     let tx = c.transaction()?;
     let mut v = read(&tx, bid)?;
@@ -182,6 +186,7 @@ pub(super) async fn control(
         }
         v = json!({"bookId":bid,"requestId":format!("{}-{}",chrono::Utc::now().timestamp_millis(),rand::random::<u64>()),"query":query,
             "state":"searching","maxPages":BATCH_LIMIT,"pagesDone":0,"items":[],"error":"","startedAt":db::now()});
+        if let Some(req) = ai_request { v["aiRequest"] = req; }
     } else {
         if text(&v, "requestId").is_empty() || input["requestId"] != v["requestId"] {
             return Err(ApiError::bad("比价任务已过期，请刷新"));
@@ -256,6 +261,7 @@ pub(super) async fn control(
                     if previous.iter().any(|i| i["url"] == item["url"]) {
                         continue;
                     }
+                    source_links::enrich(&tx, bid, &item)?;
                     if known_urls.insert(text(&item, "url").to_string()) {
                         let capture_input: crate::models::CaptureInput = serde_json::from_value(
                             json!({"asSource":true,"sourceBookId":bid,
@@ -296,7 +302,21 @@ pub(super) async fn control(
     v["updatedAt"] = json!(db::now());
     v["touchedAt"] = json!(chrono::Utc::now().timestamp_millis());
     write(&tx, bid, &v)?;
-    if ["page","batch","finish"].contains(&action.as_str()){crate::agents::ai::auto_queue(&tx,bid,"source")?;}
+    if v["aiRequest"].is_object() {
+        // Queue once, including an explicit stop with partial results. Persist the frozen
+        // executor/model/prompt so leaving the page or restarting cannot change them.
+        if (v["state"] == "completed" || (v["state"] == "canceled" && input["analyze"] == true))
+            && v["analysisJobId"].is_null() && !source_list(&tx, Some(bid))?.is_empty() {
+            match crate::agents::ai::enqueue_prepared(&tx, &json!({"bookIds":[bid]}), v["aiRequest"].clone()) {
+                Ok(job) => { v["analysisJobId"] = job["id"].clone(); v["analysisError"] = json!(""); }
+                Err(error) => { v["analysisError"] = json!(error.message); }
+            }
+            write(&tx, bid, &v)?;
+        }
+        crate::agents::ai::refresh_reference_cost(&tx,bid)?;
+    } else if ["page","batch","finish"].contains(&action.as_str()) {
+        crate::agents::ai::auto_queue(&tx,bid,"source")?;
+    }
     let result = decorate(&tx, bid, v)?;
     tx.commit()?;
     Ok(Json(result))

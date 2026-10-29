@@ -21,7 +21,7 @@ onMounted(load);
     <p class="muted ai-model-line">成本取淘宝商品价的第二低价，去重、不含运费。</p>
     <label class="check-line"><input v-model="form.enabled" type="checkbox" />自动完善草稿</label>
     <div v-if="form.enabled" class="ai-auto-options"><label class="check-line"><input v-model="form.autoOnImport" type="checkbox" />图书入库或资料变更后</label><label class="check-line"><input v-model="form.autoOnSources" type="checkbox" />货源更新后</label><p class="muted">使用所选模型额度；结果写入草稿，发布前确认。</p></div>
-    <label class="field"><span>提示词模板</span><SearchSelect v-model="task" class="input" aria-label="提示词模板"><option value="complete">定价并生成文案</option><option value="pricing">分析定价</option><option value="copy">生成上架文案</option><option value="text">自定义文本</option></SearchSelect></label>
+    <label class="field"><span>提示词模板</span><SearchSelect v-model="task" class="input" aria-label="提示词模板"><option value="sources">整理货源</option><option value="complete">定价并生成文案</option><option value="pricing">分析定价</option><option value="copy">生成上架文案</option><option value="text">自定义文本</option></SearchSelect></label>
     <label class="field"><span>提示词</span><textarea v-model="form.prompts[task]" class="input" rows="7" maxlength="12000" required /></label>
     <div class="row"><button class="btn primary" :disabled="busy || !dirty">保存设置</button><button v-if="defaults[task]" class="btn ghost" type="button" :disabled="busy" @click="form.prompts[task]=defaults[task]">恢复当前默认提示词</button></div>
     <p v-if="error" class="error-panel" role="alert">{{ error }}</p><p v-if="message" class="success-text" role="status">{{ message }}</p>

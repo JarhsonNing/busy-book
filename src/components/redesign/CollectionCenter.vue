@@ -276,9 +276,9 @@ const time = (v) =>
                 {{ item.title }}
               </button>
             </td>
-            <td>{{ item.state === 'done' ? (selected.kind==='ai'?'草稿已保存':'已完成') : item.state==='failed'?'失败':'待处理' }}<small v-if="item.error" class="danger">{{ item.error }}</small></td>
+            <td>{{ item.state === 'done' ? (selected.kind==='ai'?(selected.request.task==='sources'?'整理已保存':'草稿已保存'):'已完成') : item.state==='failed'?'失败':'待处理' }}<small v-if="item.error" class="danger">{{ item.error }}</small></td>
             <td class="row">
-              <button v-if="selected.kind==='ai' && item.state==='done'" class="btn small" @click="$emit('open-draft',item.bookId)">查看草稿</button>
+              <button v-if="selected.kind==='ai' && item.state==='done'" class="btn small" @click="$emit('open-draft',item.bookId,selected.request.task)">{{ selected.request.task==='sources'?'查看货源':'查看草稿' }}</button>
               <button
                 v-if="item.state !== 'done' && selected.kind!=='ai'"
                 class="btn small"
